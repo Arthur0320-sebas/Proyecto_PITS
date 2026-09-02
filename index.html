@@ -313,80 +313,185 @@ function render(view="dashboard"){
 
  if(view==="dashboard"){
   const fechaDashboard=new Date(dashboardDate+"T12:00:00");
+
   document.getElementById("dateLabel").innerHTML=`
-   <button onclick="changeDashboardDate(-1)">‹</button>
+   <button class="mini" onclick="changeDashboardDate(-1)" title="Día anterior">‹</button>
    <input type="date" value="${dashboardDate}" onchange="setDashboardDate(this.value)">
-   <button onclick="changeDashboardDate(1)">›</button>
-   <span>${fechaDashboard.toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</span>
-   <button onclick="goToday()">Hoy</button>
+   <button class="mini" onclick="changeDashboardDate(1)" title="Día siguiente">›</button>
+   <span>
+    ${fechaDashboard.toLocaleDateString("es-MX",{
+      weekday:"long",
+      day:"2-digit",
+      month:"long",
+      year:"numeric"
+    })}
+   </span>
+   <button class="mini" onclick="goToday()">Hoy</button>
   `;
  }else{
-  document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+  const fechaActual=new Date(TODAY()+"T12:00:00");
+  document.getElementById("dateLabel").textContent=fechaActual.toLocaleDateString("es-MX",{
+   weekday:"long",
+   day:"2-digit",
+   month:"long",
+   year:"numeric"
+  });
  }
+
  document.getElementById("content").innerHTML={dashboard,agenda,clientes,saldos,servicios,pagos,gastos,empleados,caja,reportes}[view]();
 }
 document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>render(b.dataset.view));
 
 function stat(t,v,k,s){return `<div class="stat ${k}"><span>${t}</span><b>${v}</b><small>${s}</small></div>`}
-let dashboardDate = TODAY();
+let dashboardDate=TODAY();
 
 function changeDashboardDate(days){
-  const fecha = new Date(dashboardDate + "T12:00:00");
-  fecha.setDate(fecha.getDate() + days);
-
-  dashboardDate = fecha.toISOString().split("T")[0];
-
-  render("dashboard");
+ const fecha=new Date(dashboardDate+"T12:00:00");
+ fecha.setDate(fecha.getDate()+days);
+ dashboardDate=fecha.toISOString().split("T")[0];
+ render("dashboard");
 }
 
 function setDashboardDate(value){
-  dashboardDate = value;
-  render("dashboard");
+ if(!value)return;
+ dashboardDate=value;
+ render("dashboard");
 }
 
 function goToday(){
-  dashboardDate = TODAY();
-  render("dashboard");
+ dashboardDate=TODAY();
+ render("dashboard");
 }
+
 function dashboard(){
  const d=dashboardDate;
- const today=data.appointments.filter(a=>a.date===d&&a.status!=="cancelled");
- const sold=today.reduce((s,a)=>s+(+a.total||0),0);
- const paid=data.payments.filter(p=>p.date===d).reduce((s,p)=>s+(+p.amount||0),0);
- const exp=data.expenses.filter(e=>e.date===d).reduce((s,e)=>s+(+e.amount||0),0);
- const pendingToday=today.reduce((s,a)=>s+appDue(a.id),0);
- const salaries=today.reduce((sum,a)=>{
-  const commissions=a.commissions||commissionsFor(a)||[];
-  return sum+commissions.reduce((subtotal,x)=>subtotal+(+x.pay||0),0);
- },0);
- const profit=sold-salaries-exp;
- const cashToday=data.payments.filter(p=>p.date===d&&p.method==="Efectivo").reduce((s,p)=>s+(+p.amount||0),0);
- const bankToday=data.payments.filter(p=>p.date===d&&p.method==="Transferencia").reduce((s,p)=>s+(+p.amount||0),0);
 
- return `<div class="grid four">${stat("Ventas de hoy",money(sold),"green",today.length+" servicios")}
- ${stat("Cobrado hoy",money(paid),"blue",`💵 ${money(cashToday)} · 🏦 ${money(bankToday)}`)}
- ${stat("Pendiente",money(pendingToday),"amber","por cobrar")}
- ${stat("Ganancia neta",money(profit),"green","ventas de hoy − sueldos − gastos")}</div>
- <div class="grid two">
-  <div class="panel"><div class="panel-title">Clientes de hoy <span class="muted">Toca un pendiente para cobrar</span></div>
-   ${today.length?today.map(dashRow).join(""):`<div class="empty">No hay citas para hoy.</div>`}
+ // Todo lo que aparece aquí se calcula únicamente con la fecha seleccionada.
+ const today=data.appointments.filter(
+  a=>a.date===d&&a.status!=="cancelled"
+ );
+
+ const sold=today.reduce((s,a)=>s+(+a.total||0),0);
+
+ const paid=data.payments
+  .filter(p=>p.date===d)
+  .reduce((s,p)=>s+(+p.amount||0),0);
+
+ const exp=data.expenses
+  .filter(e=>e.date===d)
+  .reduce((s,e)=>s+(+e.amount||0),0);
+
+ const pendingToday=today.reduce(
+  (s,a)=>s+appDue(a.id),
+  0
+ );
+
+ // Comisión generada por los servicios terminados en la fecha seleccionada.
+ const salaries=today
+  .filter(a=>a.status==="completed")
+  .reduce((s,a)=>{
+   return s+(a.commissions||commissionsFor(a))
+    .reduce((sum,x)=>sum+(+x.pay||0),0);
+  },0);
+
+ const profit=sold-salaries-exp;
+
+ // Movimientos de dinero de la fecha seleccionada.
+ const cashIn=data.payments
+  .filter(p=>p.date===d&&p.method==="Efectivo")
+  .reduce((s,p)=>s+(+p.amount||0),0);
+
+ const bankIn=data.payments
+  .filter(p=>p.date===d&&p.method==="Transferencia")
+  .reduce((s,p)=>s+(+p.amount||0),0);
+
+ const cashExpenses=data.expenses
+  .filter(e=>e.date===d&&e.method==="Efectivo")
+  .reduce((s,e)=>s+(+e.amount||0),0);
+
+ const bankExpenses=data.expenses
+  .filter(e=>e.date===d&&e.method==="Transferencia")
+  .reduce((s,e)=>s+(+e.amount||0),0);
+
+ const cashEmployeePayments=data.employeePayments
+  .filter(p=>p.date===d&&p.method==="Efectivo")
+  .reduce((s,p)=>s+(+p.amount||0),0);
+
+ const bankEmployeePayments=data.employeePayments
+  .filter(p=>p.date===d&&p.method==="Transferencia")
+  .reduce((s,p)=>s+(+p.amount||0),0);
+
+ const tipsPaid=data.tips
+  .filter(t=>t.date===d)
+  .reduce((s,t)=>s+(+t.amount||0),0);
+
+ const cashOut=cashExpenses+cashEmployeePayments+tipsPaid;
+ const bankOut=bankExpenses+bankEmployeePayments;
+
+ const cashNet=cashIn-cashOut;
+ const bankNet=bankIn-bankOut;
+ const totalNet=cashNet+bankNet;
+
+ const dateText=new Date(d+"T12:00:00").toLocaleDateString("es-MX",{
+  day:"2-digit",
+  month:"long",
+  year:"numeric"
+ });
+
+ return `
+  <div class="grid four">
+   ${stat("Ventas del día",money(sold),"green",today.length+" servicios")}
+   ${stat("Cobrado del día",money(paid),"blue",`💵 ${money(cashIn)} · 🏦 ${money(bankIn)}`)}
+   ${stat("Pendiente",money(pendingToday),"amber","por cobrar")}
+   ${stat("Ganancia neta",money(profit),"green","ventas − sueldos − gastos")}
   </div>
-  <div class="panel"><div class="panel-title">Dinero Pits</div>
-   <div class="moneyrow"><span>💵 Efectivo</span><b>${money(data.cash.efectivo)}</b></div>
-   <div class="moneyrow"><span>🏦 Transferencias</span><b>${money(data.cash.banco)}</b></div>
-   <hr><div class="moneyrow total"><span>Total</span><b>${money(data.cash.efectivo+data.cash.banco)}</b></div>
-   <button class="btn green full" onclick="openClosing()">🔒 Hacer corte del día</button>
+
+  <div class="grid two">
+   <div class="panel">
+    <div class="panel-title">Clientes del día <span class="muted">${dateText} · Toca un pendiente para cobrar</span></div>
+    ${today.length?today.map(dashRow).join(""):`<div class="empty">No hay citas para este día.</div>`}
+   </div>
+
+   <div class="panel">
+    <div class="panel-title">Dinero Pits <span class="muted">Movimientos del día seleccionado</span></div>
+
+    <div class="moneyrow"><span>💵 Entró en efectivo</span><b>${money(cashIn)}</b></div>
+    <div class="moneyrow"><span>🏦 Entró por transferencias</span><b>${money(bankIn)}</b></div>
+    <hr>
+    <div class="moneyrow"><span>💸 Salió en efectivo</span><b>${money(cashOut)}</b></div>
+    <div class="moneyrow"><span>🏦 Salió de banco</span><b>${money(bankOut)}</b></div>
+    <hr>
+    <div class="moneyrow"><span>💵 Neto en efectivo</span><b>${money(cashNet)}</b></div>
+    <div class="moneyrow"><span>🏦 Neto en banco</span><b>${money(bankNet)}</b></div>
+    <hr>
+    <div class="moneyrow total"><span>Total neto del día</span><b>${money(totalNet)}</b></div>
+
+    ${d===TODAY()?`<button class="btn green full" onclick="openClosing()">🔒 Hacer corte del día</button>`:""}
+   </div>
   </div>
- </div>
- <div class="grid two">
-  <div class="panel"><div class="panel-title">Pendientes de cobro <span class="danger">${money(pendingToday)}</span></div>
-   ${today.filter(a=>appDue(a.id)>0).map(a=>pendingRow(a)).join("")||`<div class="empty">No hay pendientes hoy.</div>`}
+
+  <div class="grid two">
+   <div class="panel">
+    <div class="panel-title">Pendientes de cobro <span class="danger">${money(pendingToday)}</span></div>
+    ${today.filter(a=>apptDue(a.id)>0).map(pendingRow).join("")||`<div class="empty">No hay pendientes en este día.</div>`}
+   </div>
+
+   <div class="panel">
+    <div class="panel-title">Empleados en esa fecha</div>
+    ${data.employees.map(e=>{
+     const jobs=employeeJobsForDate(e.id,d);
+     const st=empStatsForDate(e.id,d);
+     return `<div class="mini-employee">
+      <b>${esc(e.name)}</b>
+      <span class="employee-state ${jobs.length?'busy':'free'}">${jobs.length?'🟢 Trabajó':'⚪ Sin servicios'}</span>
+      <small>${jobs.length?jobs.length+" servicio(s) terminado(s) · Le toca "+money(st.due):"Sin servicios terminados ese día"}</small>
+     </div>`;
+    }).join("")}
+   </div>
   </div>
-  <div class="panel"><div class="panel-title">Empleados ahora</div>
-   ${data.employees.map(e=>{const act=employeeActive(e.id);return `<div class="mini-employee"><b>${esc(e.name)}</b><span class="employee-state ${act.length?'busy':'free'}">${act.length?'🔴 Lavando':'🟢 Desocupado'}</span><small>${act.length?act.map(a=>client(a.clientId)?.name).join(" · "):"Sin vehículo en proceso"}</small></div>`}).join("")}
-  </div>
- </div>`;
+ `;
 }
+
 function dashRow(a){
  const c=client(a.clientId), workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ")||"Sin asignar";
  const due=apptDue(a.id), paid=isPaid(a.id), status=a.status==="completed"?"Realizado":a.status==="in_progress"?"En proceso":"Agendado";
