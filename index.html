@@ -310,32 +310,66 @@ function render(view="dashboard"){
  const titles={dashboard:"Dashboard",agenda:"Agenda",clientes:"Clientes",saldos:"Saldos a favor",servicios:"Servicios",pagos:"Pagos",gastos:"Gastos",empleados:"Empleados y comisiones",caja:"Caja",reportes:"Reportes"};
  document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
  document.getElementById("title").textContent=titles[view];
- document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+
+ if(view==="dashboard"){
+  const fechaDashboard=new Date(dashboardDate+"T12:00:00");
+  document.getElementById("dateLabel").innerHTML=`
+   <button onclick="changeDashboardDate(-1)">‹</button>
+   <input type="date" value="${dashboardDate}" onchange="setDashboardDate(this.value)">
+   <button onclick="changeDashboardDate(1)">›</button>
+   <span>${fechaDashboard.toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"})}</span>
+   <button onclick="goToday()">Hoy</button>
+  `;
+ }else{
+  document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+ }
  document.getElementById("content").innerHTML={dashboard,agenda,clientes,saldos,servicios,pagos,gastos,empleados,caja,reportes}[view]();
 }
 document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>render(b.dataset.view));
 
 function stat(t,v,k,s){return `<div class="stat ${k}"><span>${t}</span><b>${v}</b><small>${s}</small></div>`}
+let dashboardDate = TODAY();
+
+function changeDashboardDate(days){
+  const fecha = new Date(dashboardDate + "T12:00:00");
+  fecha.setDate(fecha.getDate() + days);
+
+  dashboardDate = fecha.toISOString().split("T")[0];
+
+  render("dashboard");
+}
+
+function setDashboardDate(value){
+  dashboardDate = value;
+  render("dashboard");
+}
+
+function goToday(){
+  dashboardDate = TODAY();
+  render("dashboard");
+}
 function dashboard(){
- const d=TODAY(),todayA=data.appointments.filter(a=>a.date===d&&a.status!=="cancelled");
- const sold=todayA.reduce((s,a)=>s+(+a.total||0),0);
+ const d=dashboardDate;
+ const today=data.appointments.filter(a=>a.date===d&&a.status!=="cancelled");
+ const sold=today.reduce((s,a)=>s+(+a.total||0),0);
  const paid=data.payments.filter(p=>p.date===d).reduce((s,p)=>s+(+p.amount||0),0);
  const exp=data.expenses.filter(e=>e.date===d).reduce((s,e)=>s+(+e.amount||0),0);
- const pendingToday=todayA.reduce((s,a)=>s+apptDue(a.id),0);
- const salaries=totalEmployeeTodaySalary();
- const tips=totalTipsToday();
+ const pendingToday=today.reduce((s,a)=>s+appDue(a.id),0);
+ const salaries=today.reduce((sum,a)=>{
+  const commissions=a.commissions||commissionsFor(a)||[];
+  return sum+commissions.reduce((subtotal,x)=>subtotal+(+x.pay||0),0);
+ },0);
  const profit=sold-salaries-exp;
- const cashToday=data.payments.filter(p=>p.date===d&&p.method==="Efectivo").reduce((s,p)=>s+p.amount,0);
- const bankToday=data.payments.filter(p=>p.date===d&&p.method==="Transferencia").reduce((s,p)=>s+p.amount,0);
- return `<div class="grid four">
- ${stat("Ventas de hoy",money(sold),"green",todayA.length+" servicios")}
+ const cashToday=data.payments.filter(p=>p.date===d&&p.method==="Efectivo").reduce((s,p)=>s+(+p.amount||0),0);
+ const bankToday=data.payments.filter(p=>p.date===d&&p.method==="Transferencia").reduce((s,p)=>s+(+p.amount||0),0);
+
+ return `<div class="grid four">${stat("Ventas de hoy",money(sold),"green",today.length+" servicios")}
  ${stat("Cobrado hoy",money(paid),"blue",`💵 ${money(cashToday)} · 🏦 ${money(bankToday)}`)}
  ${stat("Pendiente",money(pendingToday),"amber","por cobrar")}
- ${stat("Ganancia neta",money(profit),"green","ventas de hoy − sueldos − gastos")}
-</div>
+ ${stat("Ganancia neta",money(profit),"green","ventas de hoy − sueldos − gastos")}</div>
  <div class="grid two">
   <div class="panel"><div class="panel-title">Clientes de hoy <span class="muted">Toca un pendiente para cobrar</span></div>
-   ${todayA.length?todayA.map(dashRow).join(""):`<div class="empty">No hay citas para hoy.</div>`}
+   ${today.length?today.map(dashRow).join(""):`<div class="empty">No hay citas para hoy.</div>`}
   </div>
   <div class="panel"><div class="panel-title">Dinero Pits</div>
    <div class="moneyrow"><span>💵 Efectivo</span><b>${money(data.cash.efectivo)}</b></div>
@@ -346,14 +380,13 @@ function dashboard(){
  </div>
  <div class="grid two">
   <div class="panel"><div class="panel-title">Pendientes de cobro <span class="danger">${money(pendingToday)}</span></div>
-   ${todayA.filter(a=>apptDue(a.id)>0).map(a=>pendingRow(a)).join("")||`<div class="empty">No hay pendientes hoy.</div>`}
+   ${today.filter(a=>appDue(a.id)>0).map(a=>pendingRow(a)).join("")||`<div class="empty">No hay pendientes hoy.</div>`}
   </div>
   <div class="panel"><div class="panel-title">Empleados ahora</div>
    ${data.employees.map(e=>{const act=employeeActive(e.id);return `<div class="mini-employee"><b>${esc(e.name)}</b><span class="employee-state ${act.length?'busy':'free'}">${act.length?'🔴 Lavando':'🟢 Desocupado'}</span><small>${act.length?act.map(a=>client(a.clientId)?.name).join(" · "):"Sin vehículo en proceso"}</small></div>`}).join("")}
   </div>
  </div>`;
 }
-
 function dashRow(a){
  const c=client(a.clientId), workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ")||"Sin asignar";
  const due=apptDue(a.id), paid=isPaid(a.id), status=a.status==="completed"?"Realizado":a.status==="in_progress"?"En proceso":"Agendado";
