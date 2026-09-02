@@ -1,0 +1,758 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pits Admin</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<aside class="sidebar">
+  <div class="logo"><b>PITS</b><span>ADMIN</span><small>Autolavado Pits</small></div>
+  <nav>
+    <button class="nav active" data-view="dashboard">▦ Dashboard</button>
+    <button class="nav" data-view="agenda">▣ Agenda</button>
+    <button class="nav" data-view="clientes">♙ Clientes</button>
+    <button class="nav" data-view="saldos">💰 Saldos a favor</button>
+    <button class="nav" data-view="servicios">🚗 Servicios</button>
+    <button class="nav" data-view="pagos">💳 Pagos</button>
+    <button class="nav" data-view="gastos">▤ Gastos</button>
+    <button class="nav" data-view="empleados">♟ Empleados</button>
+    <button class="nav" data-view="caja">▣ Caja</button>
+    <button class="nav" data-view="reportes">◫ Reportes</button>
+  </nav>
+  <div class="admin">Administrador<br><b>Sebastián</b></div>
+</aside>
+
+<main>
+<header class="topbar">
+  <div><div class="eyebrow">AUTOLAVADO PITS</div><h1 id="title">Dashboard</h1></div>
+  <div class="topright"><span id="dateLabel"></span><button class="btn red" onclick="newAppointment()">+ Nueva cita</button></div>
+</header>
+<section id="content"></section>
+</main>
+
+<div id="modal" class="modal hidden">
+ <div class="modal-card">
+  <div class="modal-head"><h2 id="modalTitle"></h2><button onclick="closeModal()">×</button></div>
+  <div id="modalBody"></div>
+ </div>
+</div>
+
+<script src="datos_iniciales.js"></script>
+<script>
+const KEY="pits_admin_v11_cero_REAL_20260830";
+const TODAY=()=>new Date().toLocaleDateString("en-CA");
+let agendaDate=TODAY();
+const money=n=>new Intl.NumberFormat("es-MX",{style:"currency",currency:"MXN",maximumFractionDigits:0}).format(Number(n)||0);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const defaultData={
+ clients:[],
+ appointments:[],
+ payments:[],
+ expenses:[],
+ employeePayments:[],
+ employees:[
+  {id:"e1",name:"Saul",rate:50},
+  {id:"e2",name:"Mere",rate:45},
+  {id:"e3",name:"Genaro",rate:40}
+ ],
+ cash:{efectivo:0,banco:0},
+ closings:[],
+ services:[
+  {id:"auto_lavado",vehicle:"Auto",size:"",name:"Lavado aspirado",price:180},
+  {id:"auto_encerado",vehicle:"Auto",size:"",name:"Encerado",price:280},
+  {id:"auto_pulido",vehicle:"Auto",size:"",name:"Pulido",price:1000},
+  {id:"auto_vestiduras",vehicle:"Auto",size:"",name:"Vestiduras",price:1000},
+  {id:"auto_faros",vehicle:"Auto",size:"",name:"Pulida de faros",price:0},
+  {id:"cam_med_lavado",vehicle:"Camioneta",size:"Mediana",name:"Lavado aspirado",price:200},
+  {id:"cam_gra_lavado",vehicle:"Camioneta",size:"Grande",name:"Lavado aspirado",price:250},
+  {id:"cam_xg_lavado",vehicle:"Camioneta",size:"Extra grande",name:"Lavado aspirado",price:300},
+  {id:"cam_med_enc",vehicle:"Camioneta",size:"Mediana",name:"Encerado",price:430},
+  {id:"cam_gra_enc",vehicle:"Camioneta",size:"Grande",name:"Encerado",price:480},
+  {id:"cam_xg_enc",vehicle:"Camioneta",size:"Extra grande",name:"Encerado",price:550},
+  {id:"cam_med_pul",vehicle:"Camioneta",size:"Mediana",name:"Pulido",price:1400},
+  {id:"cam_gra_pul",vehicle:"Camioneta",size:"Grande",name:"Pulido",price:1600},
+  {id:"cam_xg_pul",vehicle:"Camioneta",size:"Extra grande",name:"Pulido",price:1800},
+  {id:"cam_med_vest",vehicle:"Camioneta",size:"Mediana",name:"Vestiduras",price:1400},
+  {id:"cam_gra_vest",vehicle:"Camioneta",size:"Grande",name:"Vestiduras",price:1600},
+  {id:"cam_xg_vest",vehicle:"Camioneta",size:"Extra grande",name:"Vestiduras",price:1800},
+  {id:"cam_med_far",vehicle:"Camioneta",size:"Mediana",name:"Pulida de faros",price:0},
+  {id:"cam_gra_far",vehicle:"Camioneta",size:"Grande",name:"Pulida de faros",price:0},
+  {id:"cam_xg_far",vehicle:"Camioneta",size:"Extra grande",name:"Pulida de faros",price:0}
+ ],
+};
+let remoteReady=false;
+let storedData=null;
+try{storedData=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){storedData=null}
+// Respaldo local inmediato. El servidor compartido se conecta después.
+let data=storedData || structuredClone(window.PITS_SEED_DATA || defaultData);
+data.clients??=[]; data.employees??=[]; data.appointments??=[]; data.payments??=[]; data.expenses??=[]; data.employeePayments??=[]; data.tips??=[]; data.closings??=[]; data.cash??={efectivo:0,banco:0};
+data.creditTransactions??=[]; data.recurring??=[]; data.clients.forEach(c=>{c.creditBalance=+(c.creditBalance||0)});
+data.employees.length||(data.employees=structuredClone(defaultData.employees));
+data.services=structuredClone(defaultData.services);
+data.appointments.forEach(a=>{a.employeeIds??=[];a.status??="scheduled";a.paymentStatus??="pending";a.commissions??=[];a.courtesy??=false;});
+materializeRecurring();
+save();
+
+function save(){
+ localStorage.setItem(KEY,JSON.stringify(data));
+ if(remoteReady){
+  fetch("/api/state",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)})
+   .catch(()=>console.warn("No se pudo sincronizar en este momento."));
+ }
+}
+async function loadSharedData(){
+  try{
+    const r=await fetch("/api/state");
+    if(!r.ok) throw new Error("Servidor no disponible");
+
+    const remote=await r.json();
+
+    if(remote && typeof remote==="object"){
+      data=remote;
+      localStorage.setItem(KEY,JSON.stringify(data));
+    }
+
+    remoteReady=true;
+
+     render();
+
+  }catch(e){
+    console.warn("Modo local temporal",e);
+  }
+}
+function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
+function client(id){return data.clients.find(c=>c.id===id)}
+function appointment(id){return data.appointments.find(a=>a.id===id)}
+function employee(id){return data.employees.find(e=>e.id===id)}
+function apptPaid(id){return data.payments.filter(p=>p.appointmentId===id).reduce((s,p)=>s+(+p.amount||0),0)}
+function apptCreditApplied(id){return data.creditTransactions.filter(t=>t.type==="apply"&&t.appointmentId===id).reduce((s,t)=>s+(+t.amount||0),0)}
+function apptDue(id){const a=appointment(id);return a?Math.max(0,(+a.total||0)-apptPaid(id)-apptCreditApplied(id)):0}
+function isPaid(id){return apptDue(id)<=0 && (+appointment(id)?.total||0)>0}
+function pending(){return data.appointments.filter(a=>!a.courtesy&&((+a.total||0)>0)&&apptDue(a.id)>0&&a.status!=="cancelled")}
+function employeeActive(id){
+ return data.appointments.filter(a=>a.status==="in_progress" && a.status!=="cancelled" && (a.employeeIds||[]).includes(id));
+}
+function setAppointmentStatus(id,status){
+ const a=appointment(id); if(!a)return;
+ a.status=status;
+ if(status!=="in_progress" && status!=="completed") a.commissions=a.commissions||[];
+ if(status==="completed" && a.total && (a.employeeIds||[]).length) a.commissions=commissionsFor(a);
+ if(status==="completed") applyClientCredit(a);
+ save(); closeModal(); render("agenda");
+}
+function employeeJobs(id){return data.appointments.filter(a=>a.date===TODAY()&&a.status==="completed"&&(a.employeeIds||[]).includes(id))}
+function employeeJobsForDate(id,date){return data.appointments.filter(a=>a.date===date&&a.status==="completed"&&(a.employeeIds||[]).includes(id))}
+function employeeTipsForDate(id,date){return data.tips.filter(t=>t.employeeId===id&&t.date===date).reduce((s,t)=>s+(+t.amount||0),0)}
+function empStatsForDate(id,date){
+ let base=0,due=0,ownerGain=0,courtesy=0;
+ data.appointments.filter(a=>a.date===date&&a.status==="completed").forEach(a=>{
+   (a.commissions||commissionsFor(a)).forEach(x=>{
+     if(x.employeeId===id){
+       base+=+x.base||0; due+=+x.pay||0;
+       if(a.courtesy)courtesy+=+x.pay||0;
+       else ownerGain+=(+x.base||0)-(+x.pay||0);
+     }
+   });
+ });
+ const paid=data.employeePayments.filter(p=>p.employeeId===id&&p.date===date).reduce((s,p)=>s+(+p.amount||0),0);
+ return {base,due,ownerGain,courtesy,paid,pending:Math.max(0,due-paid)}
+}
+function employeeAccountDates(id){
+ const dates=new Set();
+ data.appointments.filter(a=>(a.employeeIds||[]).includes(id)&&a.date).forEach(a=>dates.add(a.date));
+ data.employeePayments.filter(p=>p.employeeId===id&&p.date).forEach(p=>dates.add(p.date));
+ data.tips.filter(t=>t.employeeId===id&&t.date).forEach(t=>dates.add(t.date));
+ return [...dates].sort((a,b)=>b.localeCompare(a));
+}
+function openEmployeePast(id,date){
+ const e=employee(id),st=empStatsForDate(id,date),jobs=employeeJobsForDate(id,date),tips=employeeTipsForDate(id,date);
+ showModal(`Cuenta de ${esc(e.name)} · ${date}`,`<div class="employee-account-top">
+ <b>Generado ${money(st.base)}</b><b>Le toca ${money(st.due)}</b><b>Mi ganancia ${money(st.ownerGain)}</b><b>Cortesías ${money(st.courtesy)}</b><b>Propinas ${money(tips)}</b><b>Pagado ${money(st.paid)}</b><b>Pendiente ${money(st.pending)}</b></div>
+ <h3>Carros realizados ese día</h3><div class="history">${jobs.map(a=>{const x=(a.commissions||commissionsFor(a)).find(x=>x.employeeId===id);return `<div class="history-item"><div><b>${esc(client(a.clientId)?.name||"Cliente")}</b><small>${a.date}</small></div><span>${esc(a.vehicleType||"")} ${esc(a.vehicleSize||"")}</span><span>${esc(a.serviceName||"")}</span><strong>Le toca ${money(x?.pay||0)}</strong></div>`}).join("")||`<div class="empty">Sin carros terminados ese día.</div>`}</div>
+ <div class="modal-actions"><button class="btn ghost" onclick="openEmployee('${id}')">← Volver a cuenta actual</button></div>`);
+}
+
+function commissionsFor(a){
+ const ids=a.employeeIds||[]; const baseTotal=a.courtesy?(+a.courtesyBase||0):(+a.total||0); if(!baseTotal||!ids.length)return [];
+ const share=baseTotal/ids.length;
+ return ids.map(id=>{const e=employee(id);return {employeeId:id,base:share,pay:share*(e?.rate||0)/100}})
+}
+function empStats(id){
+ let base=0,due=0,ownerGain=0,courtesy=0;
+ data.appointments.filter(a=>a.date===TODAY()&&a.status==="completed").forEach(a=>(a.commissions||commissionsFor(a)).forEach(x=>{
+   if(x.employeeId===id){
+     base+=x.base||0;
+     due+=x.pay||0;
+     if(a.courtesy){courtesy+=x.pay||0;}
+     else{ownerGain+=(x.base||0)-(x.pay||0);}
+   }
+ }));
+ const paid=data.employeePayments.filter(p=>p.employeeId===id&&p.date===TODAY()).reduce((s,p)=>s+(+p.amount||0),0);
+ return {base,due,ownerGain,courtesy,paid,pending:Math.max(0,due-paid)}
+}
+function tipTotal(){return data.tips.reduce((s,t)=>s+(+t.amount||0),0)}
+function employeeTips(id){return data.tips.filter(t=>t.employeeId===id&&t.date===TODAY()).reduce((s,t)=>s+(+t.amount||0),0)}
+function employeeTodaySalary(id){return data.appointments.filter(a=>a.date===TODAY()&&a.status==="completed").reduce((s,a)=>(a.commissions||commissionsFor(a)).filter(x=>x.employeeId===id).reduce((z,x)=>z+x.pay,s),0)}
+function totalEmployeeTodaySalary(){return data.employees.reduce((s,e)=>s+employeeTodaySalary(e.id),0)}
+function totalEmployeePaymentsToday(){return data.employeePayments.filter(p=>p.date===TODAY()).reduce((s,p)=>s+(+p.amount||0),0)}
+function totalTipsToday(){return data.tips.filter(t=>t.date===TODAY()).reduce((s,t)=>s+(+t.amount||0),0)}
+function serviceCollectedToday(){return data.payments.filter(p=>p.date===TODAY()).reduce((s,p)=>s+(+p.amount||0),0)}
+
+function clientCredit(id){return +(client(id)?.creditBalance||0)}
+function addClientCredit(clientId,amount,method,note=""){
+ const c=client(clientId); amount=+amount||0; if(!c||amount<=0)return false;
+ c.creditBalance=(+c.creditBalance||0)+amount;
+ data.creditTransactions.push({id:uid(),type:"add",clientId,amount,method,date:TODAY(),note:note||"Pago anticipado"});
+ if(method==="Efectivo")data.cash.efectivo+=amount;else data.cash.banco+=amount;
+ save(); return true;
+}
+function applyClientCredit(a){
+ if(!a||a.courtesy||a.status!=="completed"||!(+a.total))return 0;
+ const c=client(a.clientId); if(!c||clientCredit(c.id)<=0)return 0;
+ const remaining=Math.max(0,(+a.total||0)-apptPaid(a.id)-apptCreditApplied(a.id));
+ if(remaining<=0)return 0;
+ const use=Math.min(clientCredit(c.id),remaining);
+ c.creditBalance=clientCredit(c.id)-use;
+ data.creditTransactions.push({id:uid(),type:"apply",clientId:c.id,appointmentId:a.id,amount:use,date:TODAY(),note:"Aplicado al servicio"});
+ a.paymentStatus=apptDue(a.id)<=0?"paid":"partial";
+ return use;
+}
+function openAddCredit(clientId){
+ const c=client(clientId); if(!c)return;
+ showModal("Agregar saldo a favor",`<div class="form-grid">
+  <label class="wide">Cliente<input value="${esc(c.name)}" disabled></label>
+  <label>Monto a favor<input id="credit_amount" type="number" min="1" placeholder="Ej. 500"></label>
+  <label>Forma de pago<select id="credit_method"><option>Efectivo</option><option>Transferencia</option></select></label>
+  <label class="wide">Nota<input id="credit_note" placeholder="Ej. Pago por adelantado"></label>
+ </div><div class="note">Este dinero se registra como recibido hoy y queda como saldo a favor. Al finalizar un servicio, el saldo se descuenta automáticamente.</div>
+ <div class="modal-actions"><button class="btn red" onclick="saveCredit('${clientId}')">Guardar saldo</button></div>`);
+}
+function saveCredit(clientId){
+ const amount=+document.getElementById("credit_amount").value||0,method=document.getElementById("credit_method").value,note=document.getElementById("credit_note").value;
+ if(!addClientCredit(clientId,amount,method,note))return alert("Escribe un monto válido.");
+ closeModal();openClient(clientId);
+}
+function creditHistory(clientId){
+ return data.creditTransactions.filter(t=>t.clientId===clientId).sort((a,b)=>((b.date||"")+b.id).localeCompare((a.date||"")+a.id)).map(t=>`<div class="credit-row"><span>${t.date}</span><b>${t.type==="add"?"Saldo agregado":"Aplicado al servicio"}</b><strong>${t.type==="add"?"+":"-"}${money(t.amount)}</strong><small>${esc(t.note||"")}</small>${t.type==="add"?`<button class="mini redtxt" onclick="deleteCredit('${t.id}')">🗑 Borrar</button>`:""}</div>`).join("")||`<div class="empty">Sin movimientos de saldo a favor.</div>`;
+}
+function deleteCredit(id){
+ const t=data.creditTransactions.find(x=>x.id===id); if(!t)return;
+ if(t.type!=="add")return alert("Este movimiento ya fue aplicado a un servicio y no se puede borrar desde aquí.");
+ if(!confirm("¿Borrar este saldo a favor? También se revertirá el dinero registrado en caja."))return;
+ const c=client(t.clientId);
+ if(c)c.creditBalance=Math.max(0,clientCredit(c.id)-(+t.amount||0));
+ if(t.method==="Efectivo")data.cash.efectivo-=+t.amount||0;else data.cash.banco-=+t.amount||0;
+ data.creditTransactions=data.creditTransactions.filter(x=>x.id!==id);
+ save();
+ closeModal();
+ render("clientes");
+}
+
+function makeClientPdfText(clientId){
+ const c=client(clientId); if(!c)return [];
+ const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled").sort((x,y)=>(x.date+x.time).localeCompare(y.date+y.time));
+ const debt=aa.reduce((s,a)=>s+apptDue(a.id),0), credit=clientCredit(clientId);
+ const lines=["AUTOLAVADO PITS","RESUMEN DE CUENTA","",`Cliente: ${c.name}`,`Direccion: ${c.address||"-"}`,`Telefono: ${c.phone||"-"}`,"",`TOTAL PENDIENTE: ${money(debt)}`,`SALDO A FAVOR: ${money(credit)}`,"","DETALLE DE SERVICIOS"];
+ aa.forEach(a=>{const pays=data.payments.filter(p=>p.appointmentId===a.id);const methods=pays.map(p=>p.method).join(" + ")||"Sin pago";lines.push(`${a.date} | ${a.vehicleType||"Vehiculo"} ${a.vehicleSize||""} | ${a.serviceName||"Servicio"} | ${money(a.total)} | ${methods} | ${apptDue(a.id)>0?"Debe "+money(apptDue(a.id)):"Pagado"}`)});
+ if(!aa.length)lines.push("Sin servicios registrados.");
+ return lines.map(s=>String(s).normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^\\x20-\\x7E]/g,""));
+}
+function downloadClientPDF(clientId){
+ const lines=makeClientPdfText(clientId), escPdf=s=>s.replace(/([\\()])/g,"\\$1");
+ const chunks=[]; let y=760;
+ chunks.push("BT\n/F1 11 Tf\n50 760 Td\n");
+ lines.slice(0,44).forEach((line,i)=>{if(i)chunks.push("0 -16 Td\n");chunks.push(`(${escPdf(line.slice(0,95))}) Tj\n`)}); chunks.push("ET\n");
+ const content=chunks.join("");
+ const objs=[];
+ objs[1]="<< /Type /Catalog /Pages 2 0 R >>";
+ objs[2]="<< /Type /Pages /Kids [3 0 R] /Count 1 >>";
+ objs[3]="<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>";
+ objs[4]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
+ objs[5]=`<< /Length ${content.length} >>\nstream\n${content}endstream`;
+ let pdf="%PDF-1.4\n", offsets=[0];
+ for(let i=1;i<objs.length;i++){offsets[i]=pdf.length;pdf+=`${i} 0 obj\n${objs[i]}\nendobj\n`}
+ const xref=pdf.length;pdf+=`xref\n0 ${objs.length}\n0000000000 65535 f \n`;for(let i=1;i<objs.length;i++)pdf+=String(offsets[i]).padStart(10,"0")+" 00000 n \n";pdf+=`trailer\n<< /Size ${objs.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+ const c=client(clientId),blob=new Blob([pdf],{type:"application/pdf"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download=`Resumen_${(c?.name||"cliente").replace(/[^a-z0-9]+/gi,"_")}.pdf`;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),500);
+}
+function printClientSummary(clientId){
+ const c=client(clientId);if(!c)return;
+ const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled").sort((x,y)=>(x.date+x.time).localeCompare(y.date+y.time));
+ const debt=aa.reduce((s,a)=>s+apptDue(a.id),0),credit=clientCredit(clientId);
+ const rows=aa.map(a=>{
+  const pays=data.payments.filter(p=>p.appointmentId===a.id);
+  const methods=pays.map(p=>`${esc(p.method)} ${money(p.amount)}`).join(" · ")||"Sin pago";
+  const used=apptCreditApplied(a.id),due=apptDue(a.id);
+  return `<tr><td>${esc(a.date||"")}</td><td>${esc(((a.vehicleType||"")+" "+(a.vehicleSize||"")).trim()||"Por confirmar")}</td><td>${esc(a.serviceName||"Servicio por definir")}${a.courtesy?" · Cortesía":""}</td><td>${money(a.total||0)}</td><td>${methods}${used?`<br>Saldo a favor: -${money(used)}`:""}</td><td class="${due?'debt':'paid'}">${due?`Debe ${money(due)}`:"Pagado"}</td></tr>`;
+ }).join("");
+ const w=window.open("","_blank");
+ if(!w){alert("Permite ventanas emergentes para imprimir el resumen.");return;}
+ w.document.open();
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Resumen de cuenta - ${esc(c.name)}</title>
+ <style>body{font-family:Arial,Helvetica,sans-serif;padding:32px;color:#20262b}h1{margin:0;color:#d71920;font-size:25px}h2{margin:6px 0 22px;font-size:18px}.meta{line-height:1.65;margin-bottom:18px}.summary{display:flex;gap:12px;margin:18px 0}.box{border:1px solid #ddd;border-radius:8px;padding:14px;flex:1}.box span{font-size:12px;color:#666}.box b{display:block;font-size:21px;margin-top:5px}.debt{color:#d71920}.credit,.paid{color:#168548}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}th{background:#f2f3f4}@media print{body{padding:10px}.no-print{display:none}}</style></head><body>
+ <h1>Autolavado Pits</h1><h2>Resumen de cuenta del cliente</h2>
+ <div class="meta"><b>Cliente:</b> ${esc(c.name)}<br><b>Dirección:</b> ${esc(c.address||"-")}<br><b>Teléfono:</b> ${esc(c.phone||"-")}</div>
+ <div class="summary"><div class="box"><span>Total pendiente</span><b class="debt">${money(debt)}</b></div><div class="box"><span>Saldo a favor</span><b class="credit">${money(credit)}</b></div></div>
+ <h3>Detalle de servicios</h3><table><thead><tr><th>Fecha</th><th>Vehículo</th><th>Servicio</th><th>Importe</th><th>Pagos</th><th>Estado</th></tr></thead><tbody>${rows||`<tr><td colspan="6">Sin servicios registrados.</td></tr>`}</tbody></table>
+ <p class="no-print" style="margin-top:20px;color:#666">Este resumen incluye deuda, saldo a favor, servicios y pagos. Para enviarlo como PDF, selecciona Guardar como PDF en la ventana de impresión.</p>
+ <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`);
+ w.document.close();
+}
+function saldos(){
+ const rows=[...data.clients].filter(c=>clientCredit(c.id)>0).sort((a,b)=>a.name.localeCompare(b.name,"es",{sensitivity:"base"}));
+ return `<div class="toolbar"><div><b>Saldos a favor</b><span class="muted">Solo aparecen clientes con saldo a favor.</span></div></div>
+ <div class="panel"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Saldo a favor</th><th></th></tr></thead><tbody>
+ ${rows.map(c=>`<tr><td><b class="link">${esc(c.name)}</b><small>${esc(c.address||"")}</small></td><td class="success"><b>${money(clientCredit(c.id))}</b></td><td><button class="mini redtxt" onclick="openAddCredit('${c.id}')">+ Agregar saldo</button> <button class="mini" onclick="openClient('${c.id}')">Ver cliente</button></td></tr>`).join("")||`<tr><td colspan="3" class="empty">No hay clientes con saldo a favor.</td></tr>`}
+ </tbody></table></div></div>`;
+}
+function render(view="dashboard"){
+ const titles={dashboard:"Dashboard",agenda:"Agenda",clientes:"Clientes",saldos:"Saldos a favor",servicios:"Servicios",pagos:"Pagos",gastos:"Gastos",empleados:"Empleados y comisiones",caja:"Caja",reportes:"Reportes"};
+ document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+ document.getElementById("title").textContent=titles[view];
+ document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+ document.getElementById("content").innerHTML={dashboard,agenda,clientes,saldos,servicios,pagos,gastos,empleados,caja,reportes}[view]();
+}
+document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>render(b.dataset.view));
+
+function stat(t,v,k,s){return `<div class="stat ${k}"><span>${t}</span><b>${v}</b><small>${s}</small></div>`}
+function dashboard(){
+ const d=TODAY(),todayA=data.appointments.filter(a=>a.date===d&&a.status!=="cancelled");
+ const sold=todayA.reduce((s,a)=>s+(+a.total||0),0);
+ const paid=data.payments.filter(p=>p.date===d).reduce((s,p)=>s+(+p.amount||0),0);
+ const exp=data.expenses.filter(e=>e.date===d).reduce((s,e)=>s+(+e.amount||0),0);
+ const pendingToday=todayA.reduce((s,a)=>s+apptDue(a.id),0);
+ const salaries=totalEmployeeTodaySalary();
+ const tips=totalTipsToday();
+ const profit=sold-salaries-exp;
+ const cashToday=data.payments.filter(p=>p.date===d&&p.method==="Efectivo").reduce((s,p)=>s+p.amount,0);
+ const bankToday=data.payments.filter(p=>p.date===d&&p.method==="Transferencia").reduce((s,p)=>s+p.amount,0);
+ return `<div class="grid four">
+ ${stat("Ventas de hoy",money(sold),"green",todayA.length+" servicios")}
+ ${stat("Cobrado hoy",money(paid),"blue",`💵 ${money(cashToday)} · 🏦 ${money(bankToday)}`)}
+ ${stat("Pendiente",money(pendingToday),"amber","por cobrar")}
+ ${stat("Ganancia neta",money(profit),"green","ventas de hoy − sueldos − gastos")}
+</div>
+ <div class="grid two">
+  <div class="panel"><div class="panel-title">Clientes de hoy <span class="muted">Toca un pendiente para cobrar</span></div>
+   ${todayA.length?todayA.map(dashRow).join(""):`<div class="empty">No hay citas para hoy.</div>`}
+  </div>
+  <div class="panel"><div class="panel-title">Dinero Pits</div>
+   <div class="moneyrow"><span>💵 Efectivo</span><b>${money(data.cash.efectivo)}</b></div>
+   <div class="moneyrow"><span>🏦 Transferencias</span><b>${money(data.cash.banco)}</b></div>
+   <hr><div class="moneyrow total"><span>Total</span><b>${money(data.cash.efectivo+data.cash.banco)}</b></div>
+   <button class="btn green full" onclick="openClosing()">🔒 Hacer corte del día</button>
+  </div>
+ </div>
+ <div class="grid two">
+  <div class="panel"><div class="panel-title">Pendientes de cobro <span class="danger">${money(pendingToday)}</span></div>
+   ${todayA.filter(a=>apptDue(a.id)>0).map(a=>pendingRow(a)).join("")||`<div class="empty">No hay pendientes hoy.</div>`}
+  </div>
+  <div class="panel"><div class="panel-title">Empleados ahora</div>
+   ${data.employees.map(e=>{const act=employeeActive(e.id);return `<div class="mini-employee"><b>${esc(e.name)}</b><span class="employee-state ${act.length?'busy':'free'}">${act.length?'🔴 Lavando':'🟢 Desocupado'}</span><small>${act.length?act.map(a=>client(a.clientId)?.name).join(" · "):"Sin vehículo en proceso"}</small></div>`}).join("")}
+  </div>
+ </div>`;
+}
+
+function dashRow(a){
+ const c=client(a.clientId), workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ")||"Sin asignar";
+ const due=apptDue(a.id), paid=isPaid(a.id), status=a.status==="completed"?"Realizado":a.status==="in_progress"?"En proceso":"Agendado";
+ return `<div class="dashrow" onclick="${due>0?`openPayment('${a.id}')`:`openAppointment('${a.id}')`}">
+  <div class="grow"><b class="link">${esc(c?.name||"Cliente")}</b><small>${esc(c?.address||"")} · ${esc(a.vehicleType||"Vehículo por confirmar")} ${a.vehicleSize?esc(a.vehicleSize):""} · ${esc(a.serviceName||"Servicio por definir")}</small></div>
+  <span class="worker">👷 ${esc(workers)}</span><span class="status">${status}</span><b>${a.total?money(a.total):"—"}</b>
+  <span class="pill ${paid?'paid':'pending'}">${paid?'PAGADO':'PENDIENTE · COBRAR'}</span>
+ </div>`;
+}
+function pendingRow(a){
+ const c=client(a.clientId);
+ return `<div class="pendingrow" onclick="openPayment('${a.id}')"><div class="grow"><b>${esc(c?.name||"Cliente")}</b><small>${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</small></div><button class="mini redtxt">Registrar pago</button></div>`;
+}
+
+
+function openRecurring(){
+ const clients=[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,"es",{sensitivity:"base"}));
+ showModal("Programar cliente",`<div class="form-grid"><label class="wide">Cliente<select id="r_client">${clients.map(c=>`<option value="${c.id}">${esc(c.name)} · ${esc(c.address||"")}</option>`).join("")}</select></label><label>Hora<input id="r_time" type="time" value="09:00"></label><label>Desde<input id="r_start" type="date" value="${TODAY()}"></label><label class="wide">Días<div class="checks">${[[1,"Lunes"],[2,"Martes"],[3,"Miércoles"],[4,"Jueves"],[5,"Viernes"],[6,"Sábado"],[0,"Domingo"]].map(x=>`<label class="check"><input type="checkbox" name="rday" value="${x[0]}"> ${x[1]}</label>`).join("")}</div></label></div><div class="note">Ejemplo: selecciona Lunes y el sistema mantendrá al cliente programado cada lunes. Puedes seleccionar varios días.</div><div class="modal-actions"><button class="btn red" onclick="saveRecurring()">Programar cliente</button></div>`);
+}
+function saveRecurring(){
+ const clientId=document.getElementById("r_client")?.value,time=document.getElementById("r_time")?.value,start=document.getElementById("r_start")?.value,days=[...document.querySelectorAll('input[name="rday"]:checked')].map(x=>+x.value);
+ if(!clientId||!time||!start||!days.length)return alert("Selecciona cliente, hora, fecha y al menos un día.");
+ data.recurring.push({id:uid(),clientId,time,start,days}); materializeRecurring(); save(); closeModal(); render("agenda");
+}
+function materializeRecurring(){
+ const rules=data.recurring||[], horizon=new Date(); horizon.setDate(horizon.getDate()+180);
+ rules.forEach(r=>{let d=new Date((r.start||TODAY())+"T12:00:00");while(d<=horizon){if(r.days.includes(d.getDay())){const ds=d.toISOString().slice(0,10);if(!data.appointments.some(a=>a.recurringId===r.id&&a.date===ds))data.appointments.push({id:uid(),recurringId:r.id,clientId:r.clientId,date:ds,time:r.time,vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,courtesy:false,status:"scheduled",paymentStatus:"pending",employeeIds:[],commissions:[]});}d.setDate(d.getDate()+1)}});
+}
+function agenda(){
+ const selected=agendaDate;
+ const arr=data.appointments.filter(a=>a.date===selected&&a.status!=="cancelled").sort((a,b)=>(a.time||"").localeCompare(b.time||""));
+ const startHour=6,endHour=23,pxHour=78;
+ const lanes=[];
+ const positioned=arr.map(a=>{
+   const [hh,mm]=(a.time||"08:00").split(":").map(Number);
+   const start=(hh*60+mm)-(startHour*60);
+   const duration=60,end=start+duration;
+   let lane=0; while(lanes[lane]!==undefined&&lanes[lane]>start)lane++; lanes[lane]=end;
+   return {...a,top:Math.max(0,start/60*pxHour),height:Math.max(58,duration/60*pxHour-6),lane};
+ });
+ const laneCount=Math.max(1,lanes.length);
+ const hours=Array.from({length:endHour-startHour+1},(_,i)=>`<div class="agenda-hour" style="top:${i*pxHour}px">${String(startHour+i).padStart(2,"0")}:00</div>`).join("");
+ const lines=Array.from({length:endHour-startHour+1},(_,i)=>`<div class="agenda-line" style="top:${i*pxHour}px"></div>`).join("");
+ const events=positioned.map(a=>{
+   const c=client(a.clientId),left=`calc(${a.lane} * (100% / ${laneCount}) + 6px)`,width=`calc(100% / ${laneCount} - 12px)`,due=apptDue(a.id);
+   const workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ");
+   return `<div class="agenda-event ${a.status==="in_progress"?"event-working":a.status==="completed"?"event-done":""}" style="top:${a.top}px;height:${a.height}px;left:${left};width:${width}" onclick="openAppointment('${a.id}')">
+     <b>${esc(c?.name||"Cliente")}</b><span>${esc(c?.address||"")}</span>
+     <small>${esc(a.serviceName||"Servicio por definir")}${workers?` · 👷 ${esc(workers)}`:""}</small>
+     ${due>0?`<em>Pendiente ${money(due)}</em>`:""}
+   </div>`;
+ }).join("");
+ const pretty=new Date(selected+"T12:00:00").toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+ return `<div class="toolbar"><div><b>Agenda</b><span class="muted">${pretty}</span></div><div><button class="mini" onclick="openRecurring()">↻ Programar cliente</button> <button class="btn red" onclick="newAppointment('', '${selected}')">+ Nueva cita</button></div></div>
+ <div class="agenda-controls"><button class="mini" onclick="agendaMove(-1)">← Día anterior</button><button class="mini" onclick="agendaToday()">Hoy</button><input type="date" value="${selected}" onchange="agendaSetDate(this.value)"><button class="mini" onclick="agendaMove(1)">Día siguiente →</button></div>
+ <div class="agenda-calendar"><div class="agenda-time">${hours}</div><div class="agenda-body">${lines}${events||`<div class="agenda-empty">No hay citas para este día.</div>`}</div></div>`;
+}
+function agendaMove(days){const d=new Date(agendaDate+"T12:00:00");d.setDate(d.getDate()+days);agendaDate=d.toISOString().slice(0,10);render("agenda")}
+function agendaToday(){agendaDate=TODAY();render("agenda")}
+function agendaSetDate(v){if(!v)return;agendaDate=v;render("agenda")}
+function appointmentRow(a){
+ const c=client(a.clientId),workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ")||"Sin asignar";
+ const due=apptDue(a.id);
+ return `<div class="appointment-row" onclick="openAppointment('${a.id}')"><div class="time">${a.time||"--:--"}</div><div class="grow"><b>${esc(c?.name||"Cliente")}</b><small>${esc(c?.address||"")} · ${esc(a.serviceName||"Servicio por definir")} · 👷 ${esc(workers)}</small></div><span class="status">${a.status==="in_progress"?"🔴 Lavando":a.status==="completed"?"🟢 Realizado":"🟡 Agendada"}</span><b>${a.total?money(a.total):"—"}</b><span class="pill ${due>0?'pending':'paid'}">${due>0?"PENDIENTE":"PAGADO"}</span></div>`;
+}
+
+function newAppointment(preset="",date=TODAY()){openAppointment(null,preset,date)}
+function openAppointment(id,preset="",presetDate=agendaDate){
+ const a=id?appointment(id):{clientId:preset,date:presetDate||TODAY(),time:"",vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,status:"scheduled",paymentStatus:"pending",employeeIds:[]};
+ const edit=!!id;
+ const clientName=client(a.clientId)?.name||"";
+ showModal(edit?"Detalle del servicio":"Nueva cita",`
+ <div class="form-grid">
+  <label class="wide">Cliente
+    <div class="client-picker">
+      <input id="f_client_search" value="${esc(clientName)}" placeholder="Escribe el nombre o elige de la lista..." autocomplete="off" oninput="filterClientPicker()" onclick="filterClientPicker()">
+      <input id="f_client" type="hidden" value="${esc(a.clientId||"")}">
+      <div id="clientPickerList" class="client-picker-list"></div>
+    </div>
+    <small class="picker-help">Clientes en orden alfabético · puedes escribir para encontrarlo.</small>
+  </label>
+  <label>Fecha<input id="f_date" type="date" value="${a.date||TODAY()}"></label>
+  <label>Hora<input id="f_time" type="time" value="${a.time||""}"></label>
+  ${edit?`
+   <label>Vehículo<select id="f_vehicle" onchange="vehicleChanged()"><option value="">Seleccionar</option><option ${a.vehicleType==="Auto"?'selected':''}>Auto</option><option ${a.vehicleType==="Camioneta"?'selected':''}>Camioneta</option><option ${a.vehicleType==="Moto"?'selected':''}>Moto</option></select></label>
+   <div id="sizeBox" class="${a.vehicleType==="Camioneta"?'':'hidden'}"><label>Tamaño<select id="f_size" onchange="serviceChanged()"><option value="">Seleccionar</option><option ${a.vehicleSize==="Mediana"?'selected':''}>Mediana</option><option ${a.vehicleSize==="Grande"?'selected':''}>Grande</option><option ${a.vehicleSize==="Extra grande"?'selected':''}>Extra grande</option></select></label></div>
+   <label class="wide">Servicio<select id="f_service" onchange="serviceChanged()"></select></label>
+   <label>Precio final<input id="f_total" type="number" value="${a.total||""}" placeholder="Automático"></label>
+   <label class="wide check courtesy-check"><input id="f_courtesy" type="checkbox" ${a.courtesy?'checked':''} onchange="toggleCourtesy()"> 🎁 <b>Cortesía</b> — no se cobra al cliente, pero sí se calcula el porcentaje del empleado.</label>
+  `:`<div class="wide note"><b>Al agendar no necesitas auto, tamaño ni precio.</b><br>Esos datos se completan cuando llegues al cliente.</div>`}
+  ${edit?`<label class="wide"><b>¿Quién está lavando este vehículo?</b><div class="checks">${data.employees.map(e=>`<label class="check"><input type="checkbox" name="worker" value="${e.id}" ${(a.employeeIds||[]).includes(e.id)?'checked':''}> ${esc(e.name)} · ${employeeActive(e.id).length?'🔴 Lavando':'🟢 Disponible'}</label>`).join("")}</div></label>`:""}
+ </div>
+ ${edit?`<div class="payment-banner ${a.courtesy?'is-courtesy':apptDue(a.id)>0?'is-pending':'is-paid'}"><span>${a.courtesy?'🎁 CORTESÍA':apptDue(a.id)>0?'🔴 PENDIENTE POR COBRAR':'🟢 PAGADO'}</span>${a.courtesy?`<span>Sin cobro al cliente</span>`:apptDue(a.id)>0?`<button class="btn red" onclick="openPayment('${a.id}')">Registrar pago · ${money(apptDue(a.id))}</button>`:`<span>${data.payments.filter(p=>p.appointmentId===a.id).map(p=>p.method).join(" + ")}</span>`}</div>
+ <div class="service-actions">
+   ${a.status!=="in_progress" && a.status!=="completed"?`<button class="btn red" onclick="setAppointmentStatus('${a.id}','in_progress')">🔴 Iniciar lavado</button>`:""}
+   ${a.status==="in_progress"?`<button class="btn green" onclick="setAppointmentStatus('${a.id}','completed')">🟢 Finalizar servicio</button>`:""}
+ </div>`:""}
+ <div class="modal-actions">
+   ${edit?`<button class="mini redtxt" onclick="duplicateAppointment('${a.id}')">⧉ Duplicar cita</button><button class="mini redtxt" onclick="deleteAppointment('${a.id}')">🗑 Eliminar cita</button>`:""}
+   <button class="btn red" onclick="saveAppointment('${id||""}')">Guardar todo</button>
+ </div>
+ `);
+ filterClientPicker();
+ if(edit){refreshVehicleUI(); if(a.serviceId)document.getElementById("f_service").value=a.serviceId; serviceChanged()}
+}
+function filterClientPicker(){
+ const input=document.getElementById("f_client_search"),list=document.getElementById("clientPickerList");
+ if(!input||!list)return;
+ const q=input.value.trim().toLowerCase();
+ const clients=[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,"es",{sensitivity:"base"})).filter(c=>!q||c.name.toLowerCase().includes(q));
+ list.innerHTML=clients.slice(0,12).map(c=>`<button type="button" class="client-picker-item" onclick="chooseClient('${c.id}')"><b>${esc(c.name)}</b><span>${esc(c.address||"")}</span></button>`).join("")||`<div class="client-picker-empty">No hay clientes que coincidan.</div>`;
+ list.classList.add("show");
+}
+function chooseClient(id){
+ const c=client(id); if(!c)return;
+ document.getElementById("f_client").value=id;
+ document.getElementById("f_client_search").value=c.name;
+ document.getElementById("clientPickerList").classList.remove("show");
+}
+function duplicateAppointment(id){
+ const a=appointment(id); if(!a)return;
+ const copy=JSON.parse(JSON.stringify(a)); delete copy.id;
+ copy.status="scheduled"; copy.paymentStatus="pending"; copy.commissions=[]; copy.employeeIds=[];
+ data.appointments.push({id:uid(),...copy});
+ save(); closeModal(); render("agenda");
+}
+function deleteAppointment(id){
+ const a=appointment(id); if(!a)return;
+ const c=client(a.clientId);
+ if(!confirm(`¿Eliminar la cita de ${c?.name||"este cliente"} del ${a.date} ${a.time||""}?`))return;
+ data.appointments=data.appointments.filter(x=>x.id!==id);
+ data.payments=data.payments.filter(p=>p.appointmentId!==id);
+ save(); closeModal(); render("agenda");
+}
+function vehicleChanged(){const v=document.getElementById("f_vehicle")?.value;document.getElementById("sizeBox")?.classList.toggle("hidden",v!=="Camioneta");if(v!=="Camioneta"&&document.getElementById("f_size"))document.getElementById("f_size").value="";fillServices()}
+function refreshVehicleUI(){const v=document.getElementById("f_vehicle")?.value;document.getElementById("sizeBox")?.classList.toggle("hidden",v!=="Camioneta");fillServices()}
+function fillServices(){
+ const v=document.getElementById("f_vehicle")?.value,size=document.getElementById("f_size")?.value,sel=document.getElementById("f_service");if(!sel)return;
+ let list=[];
+ if(v==="Auto")list=data.services.filter(s=>s.vehicle==="Auto");
+ if(v==="Camioneta"&&size)list=data.services.filter(s=>s.vehicle==="Camioneta"&&s.size===size);
+ if(v==="Moto")list=data.services.filter(s=>s.vehicle==="Moto");
+ const old=sel.value;
+ sel.innerHTML='<option value="">Seleccionar servicio</option>'+list.map(s=>`<option value="${s.id}">${esc(s.name)} · ${s.price?money(s.price):"Precio manual"}</option>`).join("");
+ if(list.some(s=>s.id===old))sel.value=old;
+}
+function serviceChanged(){
+ fillServices();
+ const s=data.services.find(x=>x.id===document.getElementById("f_service")?.value);
+ const p=document.getElementById("f_total");
+ if(s&&p&&s.price>0)p.value=s.price;
+}
+function toggleCourtesy(){const cb=document.getElementById("f_courtesy"),p=document.getElementById("f_total");if(!cb||!p)return;if(cb.checked){p.dataset.previous=p.value;p.value=0;p.disabled=true;}else{p.disabled=false;if(p.dataset.previous!==undefined)p.value=p.dataset.previous;}}
+function saveAppointment(id){
+ const old=id?appointment(id):null;
+ const clientId=document.getElementById("f_client")?.value||"";
+ if(!clientId)return alert("Selecciona un cliente.");
+ const vehicle=document.getElementById("f_vehicle")?.value||"";
+ const size=vehicle==="Camioneta"?(document.getElementById("f_size")?.value||""):"";
+ const sid=document.getElementById("f_service")?.value||"";
+ const s=data.services.find(x=>x.id===sid);
+ const courtesy=!!document.getElementById("f_courtesy")?.checked;
+ const normalPrice=+(s?.price||0);
+ const total=courtesy?0:(+(document.getElementById("f_total")?.value||0));
+ const ids=[...document.querySelectorAll('input[name="worker"]:checked')].map(x=>x.value);
+ const obj={clientId,date:document.getElementById("f_date").value,time:document.getElementById("f_time").value,vehicleType:vehicle,vehicleSize:size,serviceId:s?.id||"",serviceName:s?.name||"",total,courtesy,courtesyBase:normalPrice,status:old?.status||"scheduled",employeeIds:ids,paymentStatus:courtesy?"courtesy":(old?.paymentStatus||"pending")};
+ if(obj.status==="completed"&&ids.length)obj.commissions=commissionsFor({...obj});
+ else obj.commissions=old?.commissions||[];
+ if(id)Object.assign(old,obj);else data.appointments.push({id:uid(),...obj,commissions:[]});
+ save();closeModal();render("agenda");
+}
+
+function clientes(){
+ return `<div class="toolbar"><div><b>Clientes registrados</b><span class="muted">Todos aparecen aquí. No necesitas buscarlos.</span></div><button class="btn red" onclick="openClient()">+ Nuevo cliente</button></div>
+ <div class="panel" id="clientList"></div>`;
+}
+function renderClientList(){
+ const el=document.getElementById("clientList");if(!el)return;
+ el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th></tr></thead><tbody>${data.clients.map(c=>{
+  const aa=data.appointments.filter(a=>a.clientId===c.id).sort((x,y)=>(y.date+y.time).localeCompare(x.date+x.time));
+  const pendingC=aa.reduce((s,a)=>s+apptDue(a.id),0);
+  const last=aa[0];
+  return `<tr class="click" onclick="openClient('${c.id}')"><td><b class="link">${esc(c.name)}</b></td><td>${esc(c.address)}</td><td>${last?esc((last.vehicleType||"Por confirmar")+" "+(last.vehicleSize||"")):"—"}</td><td>${aa.filter(a=>a.status==="completed").length}</td><td class="${pendingC?'danger':''}">${money(pendingC)}</td></tr>`;
+ }).join("")}</tbody></table></div>`;
+}
+function openClient(id){
+ const c=id?client(id):{name:"",address:"",phone:"",creditBalance:0};
+ const aa=id?data.appointments.filter(a=>a.clientId===id).sort((x,y)=>(y.date+y.time).localeCompare(x.date+x.time)):[];
+ const debt=id?aa.reduce((s,a)=>s+apptDue(a.id),0):0;
+ showModal(id?"Cliente":"Nuevo cliente",`
+ <div class="form-grid"><label>Nombre<input id="c_name" value="${esc(c.name)}"></label><label>Teléfono<input id="c_phone" value="${esc(c.phone||"")}"></label><label class="wide">Dirección<input id="c_address" value="${esc(c.address||"")}"></label></div>
+ ${id?`<div class="client-summary"><b>${esc(c.name)}</b><span>${esc(c.address||"")}</span><button class="btn red" onclick="closeModal();newAppointment('${id}')">+ Agendar cita</button></div>
+ <div class="client-finance"><div><small>Debe</small><b class="${debt?'danger':''}">${money(debt)}</b></div><div><small>Saldo a favor</small><b class="${clientCredit(id)?'success':''}">${money(clientCredit(id))}</b></div></div>
+ <div class="modal-actions client-tools"><button class="mini" onclick="downloadClientPDF('${id}')">⬇ Descargar PDF</button><button class="mini" onclick="printClientSummary('${id}')">🖨 Imprimir resumen</button><button class="btn green" onclick="openAddCredit('${id}')">+ Agregar saldo a favor</button> <button class="mini" onclick="closeModal();render(&quot;saldos&quot;)">Ver saldos a favor</button></div>
+ <h3>Historial de carros</h3><div class="history">${aa.map(a=>{const due=apptDue(a.id),pays=data.payments.filter(p=>p.appointmentId===a.id),used=apptCreditApplied(a.id);return `<div class="history-item"><div><b>${a.date} ${a.time||""}</b><small>${esc(a.vehicleType||"Vehículo por confirmar")} ${esc(a.vehicleSize||"")} · ${esc(a.serviceName||"Servicio por definir")}</small></div><strong>${a.courtesy?"Cortesía":money(a.total)}</strong><span>${pays.map(p=>`${p.method} ${money(p.amount)}`).join("<br>")||"Sin pago"}${used?`<br>Saldo a favor ${money(used)}`:""}</span><span class="pill ${due?'pending':'paid'}">${due?`Pendiente ${money(due)}`:"Pagado"}</span>${due?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:`<span class="muted">✓</span>`}</div>`}).join("")||`<div class="empty">Sin historial.</div>`}</div>
+ <h3>Movimientos de saldo a favor</h3><div class="credit-history">${creditHistory(id)}</div>`:""}
+ <div class="modal-actions"><button class="btn red" onclick="saveClient('${id||""}')">Guardar</button></div>`);
+}
+function saveClient(id){
+ const name=document.getElementById("c_name").value.trim(),address=document.getElementById("c_address").value.trim(),phone=document.getElementById("c_phone").value.trim();
+ if(!name)return alert("Escribe el nombre del cliente.");
+ const dup=data.clients.find(c=>c.name.trim().toLowerCase()===name.toLowerCase()&&c.id!==id);
+ if(dup)return alert(`⚠️ Este cliente ya existe: ${dup.name}.\\nDirección: ${dup.address}`);
+ if(id)Object.assign(client(id),{name,address,phone});else data.clients.push({id:uid(),name,address,phone});
+ save();closeModal();render("clientes");renderClientList();
+}
+
+function servicios(){
+ const auto=data.services.filter(s=>s.vehicle==="Auto"),cam=data.services.filter(s=>s.vehicle==="Camioneta"),moto=data.services.filter(s=>s.vehicle==="Moto");
+ const table=(title,list,sizes)=>`<h3 class="section-title">${title}</h3><div class="table-wrap"><table><thead><tr><th>Servicio</th>${sizes.map(x=>`<th>${x}</th>`).join("")}</tr></thead><tbody>${[...new Set(list.map(s=>s.name))].map(n=>`<tr><td><b>${n}</b></td>${sizes.map(sz=>{const x=list.find(s=>s.name===n&&s.size===sz);return `<td>${x?(x.price?money(x.price):"Por definir"):"—"}</td>`}).join("")}</tr>`).join("")}</tbody></table></div>`;
+ return `<div class="panel"><div class="panel-title">Tarifario de referencia <span class="muted">Solo consulta</span></div>
+ <h3 class="section-title">Auto</h3><div class="table-wrap"><table><thead><tr><th>Servicio</th><th>Precio</th></tr></thead><tbody>${[...new Set(auto.map(s=>s.name))].map(n=>{const x=auto.find(s=>s.name===n);return `<tr><td><b>${n}</b></td><td>${x?(x.price?money(x.price):"Por definir"):"—"}</td></tr>`}).join("")}</tbody></table></div>
+ ${table("Camioneta",cam,["Mediana","Grande","Extra grande"])}${table("Moto",moto,["Chica","Grande"])}<div class="note">* Pulida de faros: precio por definir.</div></div>`;
+}
+
+function pagos(){
+ const rows=data.appointments.filter(a=>(((+a.total||0)>0)||a.courtesy)&&a.status!=="cancelled");
+ const total=rows.reduce((s,a)=>s+a.total,0),received=data.payments.reduce((s,p)=>s+p.amount,0),due=rows.reduce((s,a)=>s+apptDue(a.id),0);
+ const cash= data.payments.reduce((s,p)=>s+(p.method==="Efectivo"?+p.amount:0),0);
+ const bank= data.payments.reduce((s,p)=>s+(p.method==="Transferencia"?+p.amount:0),0);
+ const tips=tipTotal();
+ return `<div class="grid three">${stat("Ventas",money(total),"green","servicios con importe")}${stat("Cobrado",money(received),"blue",`💵 Efectivo ${money(cash)} · 🏦 Transferencia ${money(bank)}`)}${stat("Pendiente",money(due),"amber","por cobrar")}</div>
+ <div class="panel"><div class="panel-title">Control de pagos <button class="btn red" onclick="openPayment()">+ Registrar pago</button></div>
+ <div class="payment-summary"><span>💵 Efectivo <b>${money(cash)}</b></span><span>🏦 Transferencia <b>${money(bank)}</b></span><span>🎁 Propinas <b>${money(tips)}</b></span></div>
+ <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Servicio</th><th>Importe</th><th>Pagado</th><th>Forma</th><th>Propina</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(a=>{
+  const dueA=apptDue(a.id),pays=data.payments.filter(p=>p.appointmentId===a.id),c=client(a.clientId),atips=data.tips.filter(t=>t.appointmentId===a.id).reduce((s,t)=>s+t.amount,0);
+  return `<tr><td><b>${esc(c?.name||"")}</b></td><td>${esc(a.serviceName)}</td><td>${a.courtesy?"$0 (Cortesía)":money(a.total)}</td><td>${money(apptPaid(a.id))}</td><td>${a.courtesy?"Cortesía":pays.map(p=>p.method).join(" + ")||"—"}</td><td>${atips?money(atips):"—"}</td><td><span class="pill ${a.courtesy?"paid":dueA?"pending":"paid"}">${a.courtesy?"Cortesía":dueA?`Pendiente ${money(dueA)}`:"Pagado"}</span></td><td>${dueA&&!a.courtesy?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:"✓"}</td></tr>`;
+ }).join("")||`<tr><td colspan="8" class="empty">No hay servicios con importe.</td></tr>`}</tbody></table></div></div>`;
+}
+function openPayment(pre=""){
+ const list=pending(), selected=list.find(a=>a.id===pre)||list[0];
+ showModal("Registrar pago",selected?`<div class="form-grid">
+ <label class="wide">Servicio pendiente<select id="p_appt" onchange="paymentAmount()">${list.map(a=>`<option value="${a.id}" ${a.id===selected.id?'selected':''}>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</option>`).join("")}</select></label>
+ <label>Monto recibido<input id="p_amount" type="number" value="${apptDue(selected.id)}" oninput="updatePaymentTip()"></label>
+ <label>Forma de pago<select id="p_method"><option>Efectivo</option><option>Transferencia</option></select></label>
+ <label>Fecha<input id="p_date" type="date" value="${TODAY()}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
+ <div class="wide payment-tip-box"><span>🎁 Propina detectada</span><b id="p_tip">$0</b><small>Si recibes más que el importe, la diferencia se registra como propina.</small></div>
+ <label class="wide">Propina para<div class="checks">${(selected.employeeIds||[]).map(id=>`<label class="check"><input type="checkbox" name="tipemp" value="${id}" checked> ${esc(employee(id)?.name||"Empleado")}</label>`).join("")||`<span class="muted">No hay empleado asignado a este servicio.</span>`}</div></label>
+ </div>
+ <div class="note">Ejemplo: servicio $180, recibes $200 → $180 se registra como ingreso del servicio y $20 como propina. La propina se paga en efectivo y se descuenta de Caja.</div>
+ <div class="modal-actions"><button class="btn red" onclick="savePayment()">Registrar pago</button></div>`:`<div class="empty">No hay cuentas pendientes de pago.</div>`);
+ updatePaymentTip();
+}
+function paymentAmount(){const a=appointment(document.getElementById("p_appt").value);document.getElementById("p_amount").value=apptDue(a.id);updatePaymentTip()}
+function updatePaymentTip(){
+ const a=appointment(document.getElementById("p_appt")?.value),amount=+(document.getElementById("p_amount")?.value||0),tip=Math.max(0,amount-(a?apptDue(a.id):0));
+ const el=document.getElementById("p_tip");if(el)el.textContent=money(tip);
+}
+function savePayment(){
+ const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
+ if(!a||amount<=0)return;
+ let remaining=amount;
+ const dueBefore=apptDue(a.id);
+ if(dueBefore<=0)return;
+
+ // Si el cliente tiene saldo a favor, se usa primero para cubrir este servicio.
+ const credit=clientCredit(a.clientId);
+ const useCredit=Math.min(credit,dueBefore,remaining);
+ if(useCredit>0){
+   const c=client(a.clientId);
+   c.creditBalance=Math.max(0,credit-useCredit);
+   data.creditTransactions.push({id:uid(),type:"apply",clientId:c.id,appointmentId:a.id,amount:useCredit,date:document.getElementById("p_date").value,note:"Aplicado al registrar pago"});
+   remaining-=useCredit;
+ }
+
+ // Solo el dinero realmente recibido hoy entra a efectivo/banco.
+ const serviceAmount=Math.min(remaining,Math.max(0,dueBefore-useCredit));
+ const tip=Math.max(0,remaining-Math.max(0,dueBefore-useCredit));
+ if(serviceAmount>0){
+   data.payments.push({id:uid(),appointmentId:a.id,clientId:a.clientId,amount:serviceAmount,method,date:document.getElementById("p_date").value});
+   if(method==="Efectivo")data.cash.efectivo+=serviceAmount;else data.cash.banco+=serviceAmount;
+ }
+ if(tip>0){
+   const ids=[...document.querySelectorAll('input[name="tipemp"]:checked')].map(x=>x.value);
+   const targets=ids.length?ids:(a.employeeIds||[]);
+   const share=targets.length?tip/targets.length:tip;
+   if(targets.length)targets.forEach(eid=>data.tips.push({id:uid(),appointmentId:a.id,employeeId:eid,amount:share,method:"Efectivo",date:document.getElementById("p_date").value}));
+   else data.tips.push({id:uid(),appointmentId:a.id,employeeId:"",amount:tip,method:"Efectivo",date:document.getElementById("p_date").value});
+   data.cash.efectivo-=tip;
+ }
+ a.paymentStatus=apptDue(a.id)<=0?"paid":"partial";
+ save();closeModal();render("pagos");
+}
+
+function gastos(){
+ return `<div class="toolbar"><span>Gasolina · Refrescos · Productos · Otros</span><button class="btn red" onclick="openExpense()">+ Nuevo gasto</button></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th><th>Método</th><th>Ticket</th></tr></thead><tbody>${data.expenses.map(e=>`<tr><td>${e.date}</td><td>${e.category}</td><td>${esc(e.description)}</td><td class="danger">${money(e.amount)}</td><td>${e.method}</td><td>${e.ticket?"📎":"—"}</td></tr>`).join("")||`<tr><td colspan="6" class="empty">No hay gastos.</td></tr>`}</tbody></table></div></div>`;
+}
+function openExpense(){showModal("Nuevo gasto",`<div class="form-grid"><label>Fecha<input id="g_date" type="date" value="${TODAY()}"></label><label>Categoría<select id="g_cat"><option>Gasolina</option><option>Refrescos</option><option>Productos</option><option>Otros</option></select></label><label>Monto<input id="g_amount" type="number"></label><label>Método<select id="g_method"><option>Efectivo</option><option>Transferencia</option></select></label><label class="wide">Descripción<input id="g_desc"></label><label class="wide">Ticket<input id="g_ticket" type="file" accept="image/*,.pdf"></label></div><div class="modal-actions"><button class="btn red" onclick="saveExpense()">Guardar gasto</button></div>`)}
+function saveExpense(){const amount=+document.getElementById("g_amount").value||0;if(!amount)return;const method=document.getElementById("g_method").value;data.expenses.push({id:uid(),date:document.getElementById("g_date").value,category:document.getElementById("g_cat").value,description:document.getElementById("g_desc").value,amount,method,ticket:document.getElementById("g_ticket").files.length>0});if(method==="Efectivo")data.cash.efectivo-=amount;else data.cash.banco-=amount;save();closeModal();render("gastos")}
+
+function empleados(){
+ return `<div class="toolbar"><div><b>Empleados</b><span class="muted">Solo tú los administras. No tienen cuenta de acceso.</span></div><button class="btn red" onclick="openEmployee()">+ Agregar empleado</button></div>
+ <div class="panel">${data.employees.map(e=>employeeCard(e)).join("")}</div>`;
+}
+function employeeCard(e){
+ const st=empStats(e.id),active=employeeActive(e.id),jobs=employeeJobs(e.id);
+ return `<div class="emp-card" onclick="openEmployee('${e.id}')"><div class="emp-head"><div class="avatar">${esc(e.name[0])}</div><div class="grow"><h3>${esc(e.name)}</h3><span>${e.rate}% comisión</span></div><span class="employee-state ${active.length?'busy':'free'}">${active.length?'🔴 LAVANDO':'🟢 DESOCUPADO'}</span></div>
+ <div class="emp-current"><b>Ahora</b>${active.length?active.map(a=>`<div>🚗 ${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.vehicleType||"")} ${esc(a.vehicleSize||"")} · ${money(a.total)}</div>`).join(""):"<div>Sin vehículo en proceso</div>"}</div>
+ <div class="emp-stats"><div><small>Generado</small><b>${money(st.base)}</b></div><div><small>Le toca</small><b>${money(st.due)}</b></div><div><small>Mi ganancia</small><b>${money(st.ownerGain)}</b></div><div><small>Cortesías</small><b>${money(st.courtesy)}</b></div><div><small>Propinas</small><b>${money(employeeTips(e.id))}</b></div><div><small>Pagado</small><b>${money(st.paid)}</b></div><div><small>Debe recibir</small><b class="${st.pending?'danger':'success'}">${money(st.pending)}</b></div></div>
+ <div class="job-list"><b>Carros que ya hizo</b>${jobs.length?jobs.map(a=>{const x=(a.commissions||commissionsFor(a)).find(x=>x.employeeId===e.id);return `<div class="job"><span>${a.date}</span><span>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.vehicleType||"")} ${esc(a.vehicleSize||"")}</span><span>${esc(a.serviceName||"")}${a.courtesy?" · 🎁 Cortesía":""}</span><strong>${money(x?.pay||0)}</strong></div>`}).join(""):`<small>Sin servicios terminados todavía.</small>`}</div></div>`;
+}
+
+function openEmployee(id){
+ const e=id?employee(id):{name:"",rate:""}; const st=id?empStats(id):null;
+ showModal(id?`Cuenta de ${esc(e.name)}`:"Agregar empleado",`<div class="form-grid"><label>Nombre<input id="e_name" value="${esc(e.name)}"></label><label>Porcentaje<input id="e_rate" type="number" value="${e.rate}"></label></div>
+ ${id?`<div class="employee-account-top"><span class="employee-state ${employeeActive(id).length?'busy':'free'}">${employeeActive(id).length?'🔴 LAVANDO':'🟢 DESOCUPADO'}</span><b>Generado ${money(st.base)}</b><b>Le toca ${money(st.due)}</b><b>Mi ganancia ${money(st.ownerGain)}</b><b>Cortesías ${money(st.courtesy)}</b><b>Propinas ${money(employeeTips(id))}</b><b>Pagado ${money(st.paid)}</b><b>Pendiente ${money(st.pending)}</b></div>
+ <div class="past-accounts-box"><h3>📅 Ver cuentas pasadas</h3><p class="muted">Selecciona una fecha para consultar la cuenta completa de ese día.</p>
+ <div class="form-grid"><label>Selecciona una fecha guardada<select id="emp_past_date"><option value="">Seleccionar fecha</option>${employeeAccountDates(id).map(d=>`<option value="${d}">${d}${d===TODAY()?" (hoy)":""}</option>`).join("")}</select></label></div>
+ <div class="modal-actions"><button class="btn ghost" onclick="const d=document.getElementById('emp_past_date').value;if(!d){alert('Selecciona una fecha');return;}openEmployeePast('${id}',d)">📅 Ver cuenta seleccionada</button></div>
+ ${employeeAccountDates(id).length?`<div class="past-date-list">${employeeAccountDates(id).map(d=>`<button class="mini" onclick="openEmployeePast('${id}','${d}')">${d}</button>`).join("")}</div>`:`<div class="empty">No hay fechas guardadas para este empleado todavía.</div>`}
+ </div><h3>Carros que ya hizo</h3><div class="history">${employeeJobs(id).map(a=>{const x=(a.commissions||commissionsFor(a)).find(x=>x.employeeId===id);return `<div class="history-item"><div><b>${a.date}</b><small>${esc(client(a.clientId)?.name||"Cliente")}</small></div><span>${esc(a.vehicleType||"")} ${esc(a.vehicleSize||"")}</span><span>${esc(a.serviceName||"")}</span><strong>Le toca ${money(x?.pay||0)}</strong></div>`}).join("")||`<div class="empty">Sin carros terminados.</div>`}</div>
+ <div class="modal-actions"><button class="btn green" onclick="openEmployeePayment('${id}')">+ Registrar pago</button></div>`:""}
+ <div class="modal-actions"><button class="btn red" onclick="saveEmployee('${id||""}')">Guardar</button></div>`);
+}
+function saveEmployee(id){const name=document.getElementById("e_name").value.trim(),rate=+document.getElementById("e_rate").value;if(!name)return alert("Escribe el nombre.");if(id)Object.assign(employee(id),{name,rate});else data.employees.push({id:uid(),name,rate});save();closeModal();render("empleados")}
+function openEmployeePayment(id){const e=employee(id);closeModal();showModal(`Pago a ${esc(e.name)}`,`<div class="form-grid"><label>Monto<input id="ep_amount" type="number"></label><label>Método<select id="ep_method"><option>Efectivo</option><option>Transferencia</option></select></label><label>Fecha<input id="ep_date" type="date" value="${TODAY()}"></label><label class="wide">Nota<input id="ep_note"></label></div><div class="modal-actions"><button class="btn red" onclick="saveEmployeePayment('${id}')">Registrar pago</button></div>`)}
+function saveEmployeePayment(id){const amount=+document.getElementById("ep_amount").value||0;if(!amount)return;const method=document.getElementById("ep_method").value;data.employeePayments.push({id:uid(),employeeId:id,amount,method,date:document.getElementById("ep_date").value,note:document.getElementById("ep_note").value});if(method==="Efectivo")data.cash.efectivo-=amount;else data.cash.banco-=amount;save();closeModal();render("empleados")}
+
+function openOpeningBalance(){
+ const o=data.openingBalance||{efectivo:0,banco:0};
+ showModal("Saldo inicial del día",`<div class="form-grid">
+ <label>Efectivo que ya tenías<input id="open_cash" type="number" min="0" value="${o.efectivo||0}"></label>
+ <label>Dinero en banco que ya tenías<input id="open_bank" type="number" min="0" value="${o.banco||0}"></label>
+ </div><div class="note">No es una venta ni un ingreso del día. Solo indica con cuánto dinero comienzas.</div>
+ <div class="modal-actions"><button class="btn red" onclick="saveOpeningBalance()">Guardar saldo inicial</button></div>`);
+}
+function saveOpeningBalance(){
+ data.openingBalance={efectivo:+document.getElementById("open_cash").value||0,banco:+document.getElementById("open_bank").value||0,date:TODAY()};
+ save();closeModal();render("caja");
+}
+function caja(){
+ const income=data.payments.reduce((s,p)=>s+p.amount,0);
+ const cashIncome=data.payments.filter(p=>p.method==="Efectivo").reduce((s,p)=>s+p.amount,0);
+ const bankIncome=data.payments.filter(p=>p.method==="Transferencia").reduce((s,p)=>s+p.amount,0);
+ const salaries=data.employeePayments.reduce((s,p)=>s+p.amount,0);
+ const tips=tipTotal();
+ const expenses=data.expenses.reduce((s,p)=>s+p.amount,0);
+ return `<div class="grid two">
+   <div class="panel opening-balance"><div><b>Saldo inicial del día</b><span class="muted">Dinero que ya tenías antes de comenzar.</span></div><button class="mini" onclick="openOpeningBalance()">💵 Registrar / cambiar</button></div>
+   <div class="panel cash-total"><div><span>💰 Dinero Pits actual</span><b>${money(data.cash.efectivo+data.cash.banco)}</b></div><small>Efectivo + banco registrados en el sistema</small></div>
+ </div>
+ <div class="grid two">
+   <div class="panel cash"><span>💵 Efectivo</span><b>${money(data.cash.efectivo)}</b><small>Deberías tener en efectivo</small></div>
+   <div class="panel cash"><span>🏦 Transferencias</span><b>${money(data.cash.banco)}</b><small>Deberías tener en banco</small></div>
+ </div>
+ <div class="panel"><div class="panel-title">Resumen de caja</div>
+   <div class="summary"><span>Total de ingresos</span><b>${money(income)}</b></div>
+   <div class="summary"><span>💵 Cobrado en efectivo</span><b>${money(cashIncome)}</b></div>
+   <div class="summary"><span>🏦 Cobrado en transferencia</span><b>${money(bankIncome)}</b></div>
+   <div class="summary"><span>👷 Sueldos</span><b>${money(salaries)}</b></div>
+   <div class="summary"><span>🎁 Propinas</span><b>${money(tips)}</b></div>
+   <div class="summary"><span>🧾 Gastos</span><b>${money(expenses)}</b></div>
+   <div class="summary total"><span>Dinero actual</span><b>${money(data.cash.efectivo+data.cash.banco)}</b></div>
+ </div>
+ <button class="btn green bigbtn" onclick="openClosing()">🔒 Hacer corte del día</button>
+ <div class="closing-tools"><button class="mini" onclick="downloadClosingReport('daily')">⬇ Descargar corte del día</button><button class="mini" onclick="printClosingReport('daily')">🖨 Imprimir corte del día</button><button class="mini" onclick="downloadClosingReport('monthly')">⬇ Descargar corte del mes</button><button class="mini" onclick="printClosingReport('monthly')">🖨 Imprimir corte del mes</button></div>`;
+}
+function reportes(){
+ const d=TODAY(),daily=data.appointments.filter(a=>a.date===d&&a.status!=="cancelled"),month=d.slice(0,7),ma=data.appointments.filter(a=>a.date?.startsWith(month)&&a.status!=="cancelled"),groups={};
+ ma.forEach(a=>{const k=a.serviceName||"Por definir";groups[k]??={importe:0,transfer:0,cash:0,pending:0};groups[k].importe+=+a.total||0;data.payments.filter(p=>p.appointmentId===a.id).forEach(p=>p.method==="Transferencia"?groups[k].transfer+=p.amount:groups[k].cash+=p.amount);groups[k].pending+=apptDue(a.id)});
+ return `<div class="report-tabs"><button class="report-tab active" onclick="toggleReport(true)">Diario</button><button class="report-tab" onclick="toggleReport(false)">Mensual</button></div>
+ <div id="dailyReport" class="panel"><div class="panel-title">Reporte diario <span><button class="mini" onclick="downloadReport('daily')">⬇ Descargar</button> <button class="btn red" onclick="window.print()">Imprimir</button></span></div><div class="table-wrap"><table><thead><tr><th>Nombre del cliente</th><th>Dirección</th><th>Servicio</th><th>Forma de pago</th><th>Estado</th></tr></thead><tbody>${daily.map(a=>{const c=client(a.clientId),p=data.payments.filter(p=>p.appointmentId===a.id);return `<tr><td>${esc(c?.name)}</td><td>${esc(c?.address)}</td><td>${esc(a.serviceName||"Por definir")}</td><td>${p.map(x=>x.method).join(" + ")||"—"}</td><td><span class="pill ${apptDue(a.id)?'pending':'paid'}">${apptDue(a.id)?"Pendiente":"Pagado"}</span></td></tr>`}).join("")||`<tr><td colspan="5" class="empty">No hay servicios hoy.</td></tr>`}</tbody></table></div></div>
+ <div id="monthlyReport" class="panel hidden"><div class="panel-title">Reporte mensual · ${month} <span><button class="mini" onclick="downloadReport('monthly')">⬇ Descargar</button> <button class="btn red" onclick="window.print()">Imprimir</button></span></div><div class="table-wrap"><table><thead><tr><th>Servicio</th><th>Importe</th><th>Transferencia</th><th>Efectivo</th><th>Cuentas por pagar</th></tr></thead><tbody>${Object.entries(groups).map(([k,r])=>`<tr><td>${esc(k)}</td><td>${money(r.importe)}</td><td>${money(r.transfer)}</td><td>${money(r.cash)}</td><td class="${r.pending?'danger':''}">${money(r.pending)}</td></tr>`).join("")||`<tr><td colspan="5" class="empty">No hay servicios este mes.</td></tr>`}</tbody></table></div></div>`;
+}
+function toggleReport(daily){document.getElementById("dailyReport").classList.toggle("hidden",!daily);document.getElementById("monthlyReport").classList.toggle("hidden",daily);document.querySelectorAll(".report-tab").forEach((b,i)=>b.classList.toggle("active",daily?i===0:i===1))}
+
+function downloadReport(type){
+ const rows=[]; let filename;
+ if(type==='daily'){
+  filename=`reporte_diario_${TODAY()}.csv`;
+  rows.push(['Nombre del cliente','Dirección','Servicio','Forma de pago','Estado']);
+  data.appointments.filter(a=>a.date===TODAY()&&a.status!=='cancelled').forEach(a=>{
+   const c=client(a.clientId), pays=data.payments.filter(p=>p.appointmentId===a.id);
+   rows.push([c?.name||'',c?.address||'',a.serviceName||'Por definir',pays.map(p=>p.method).join(' + ')||'',apptDue(a.id)>0?'Pendiente':'Pagado']);
+  });
+ }else{
+  const month=TODAY().slice(0,7), groups={}; filename=`reporte_mensual_${month}.csv`;
+  data.appointments.filter(a=>a.date?.startsWith(month)&&a.status!=='cancelled').forEach(a=>{
+   const k=a.serviceName||'Por definir'; groups[k]??={importe:0,transfer:0,cash:0,pending:0}; groups[k].importe+=+a.total||0;
+   data.payments.filter(p=>p.appointmentId===a.id).forEach(p=>p.method==='Transferencia'?groups[k].transfer+=+p.amount||0:groups[k].cash+=+p.amount||0);
+   groups[k].pending+=apptDue(a.id);
+  });
+  rows.push(['Servicio','Importe','Transferencia','Efectivo','Cuentas por pagar']);
+  Object.entries(groups).forEach(([k,r])=>rows.push([k,r.importe,r.transfer,r.cash,r.pending]));
+ }
+ const csv='\\ufeff'+rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\\r\\n');
+ const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+
+function showModal(title,body){document.getElementById("modalTitle").innerHTML=title;document.getElementById("modalBody").innerHTML=body;document.getElementById("modal").classList.remove("hidden")}
+function closeModal(){document.getElementById("modal").classList.add("hidden")}
+document.getElementById("modal").onclick=e=>{if(e.target.id==="modal")closeModal()};
+
+render("dashboard");
+loadSharedData();
+setTimeout(()=>{if(document.getElementById("clientList"))renderClientList()},0);
+const oldRender=render;
+render=function(view="dashboard"){oldRender(view);if(view==="clientes")setTimeout(renderClientList,0)};
+</script>
+</body>
+</html>
