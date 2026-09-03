@@ -6,7 +6,14 @@ const path = require('path');
 const { Pool } = require('pg');
 
 const app = express();
+app.use(express.json({ limit: '10mb' }));
+
 const PORT = process.env.PORT || 3000;
+const STATE_FILE = path.join(__dirname, 'data', 'state.json');
+
+app.use(express.json({ limit: '10mb' }));
+app.use(express.static(__dirname));
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -14,41 +21,85 @@ const pool = new Pool({
   },
   connectionTimeoutMillis: 30000
 });
-// Archivo donde se guardarán los datos
-const STATE_FILE = path.join(__dirname, 'data', 'state.json');
 
-app.use(express.json({ limit: '10mb' }));
-app.use(express.static(__dirname));
+pool.connect()
+  .then(client => {
+    console.log('✅ BASE DE DATOS POSTGRESQL CONECTADA CORRECTAMENTE');
+    client.release();
+  })
+  .catch(error => {
+    console.error('❌ ERROR AL CONECTAR A POSTGRESQL:', error.message);
+});
+async function crearTabla() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS app_state (
+        id INTEGER PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
 
+    console.log('✅ TABLA app_state LISTA');
+  } catch (error) {
+    console.error('❌ ERROR AL CREAR TABLA:', error.message);
+  }
+}
+
+crearTabla();
 
 // ==========================================
 // LEER DATOS
 // ==========================================
 
-function readStateFile() {
-  try {
-    const data = fs.readFileSync(STATE_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
+async function readState() {
 
-    console.error('Error al leer state.json:', error);
+  try {
+
+    const result = await pool.query(`
+      SELECT data
+      FROM app_state
+      WHERE id = 1
+    `);
+
+    if (result.rows.length > 0) {
+      return result.rows[0].data;
+    }
 
     return null;
+
+  } catch (error) {
+
+    console.error('Error al leer PostgreSQL:', error);
+
+    return null;
+
   }
 }
-
 
 // ==========================================
 // GUARDAR DATOS
 // ==========================================
 
-function writeStateFile(data) {
+async function writeState(data) {
 
-  fs.writeFileSync(
-    STATE_FILE,
-    JSON.stringify(data, null, 2),
-    'utf8'
-  );
+  await pool.query(`
+    INSERT INTO app_state (
+      id,
+      data,
+      updated_at
+    )
+    VALUES (
+      1,
+      $1,
+      CURRENT_TIMESTAMP
+    )
+
+    ON CONFLICT (id)
+    DO UPDATE SET
+      data = EXCLUDED.data,
+      updated_at = CURRENT_TIMESTAMP
+  `, [data]);
 
 }
 
@@ -56,7 +107,26 @@ function writeStateFile(data) {
 // ==========================================
 // OBTENER TODOS LOS DATOS
 // ==========================================
+app.get('/api/state', async (req, res) => {
+  try {
+    const data = await readState();
 
+    res.json({
+      ok: true,
+      data
+    });
+
+  } catch (error) {
+
+    console.error('Error al obtener datos:', error);
+
+    res.status(500).json({
+      ok: false,
+      error: error.message
+    });
+
+  }
+});
 app.get('/api/test-db', async (req, res) => {
 
   try {
@@ -92,7 +162,7 @@ app.get('/api/test-db', async (req, res) => {
 // GUARDAR TODOS LOS DATOS
 // ==========================================
 
-app.put('/api/state', (req, res) => {
+app.put('/api/state', async (req, res) => {
 
   try {
 
@@ -107,7 +177,7 @@ app.put('/api/state', (req, res) => {
 
     }
 
-    writeStateFile(req.body);
+    await writeState(req.body);
 
     console.log('Datos guardados correctamente');
 
@@ -128,21 +198,6 @@ app.put('/api/state', (req, res) => {
   }
 
 });
-
-
-// ==========================================
-// PRUEBA DEL SERVIDOR
-// ==========================================
-
-app.get('/api/test-db', (req, res) => {
-
-  res.json({
-    ok: true,
-    mensaje: 'Servidor funcionando correctamente 🎉'
-  });
-
-});
-
 
 // ==========================================
 // ABRIR INDEX.HTML

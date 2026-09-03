@@ -103,24 +103,58 @@ function save(){
  }
 }
 async function loadSharedData(){
-  try{
-    const r=await fetch("/api/state");
-    if(!r.ok) throw new Error("Servidor no disponible");
 
-    const remote=await r.json();
+  try {
 
-    if(remote && typeof remote==="object"){
-      data=remote;
-      localStorage.setItem(KEY,JSON.stringify(data));
+    const r = await fetch("/api/state");
+
+    if(!r.ok){
+      throw new Error("Servidor no disponible");
     }
 
-    remoteReady=true;
+    const remote = await r.json();
 
-     render();
+    if(
+      remote &&
+      typeof remote === "object"
+    ){
 
-  }catch(e){
-    console.warn("Modo local temporal",e);
+      data = remote;
+
+      localStorage.setItem(
+        KEY,
+        JSON.stringify(data)
+      );
+
+    }
+
+    remoteReady = true;
+
+    // SI LA BASE DE DATOS ESTÁ VACÍA,
+    // SUBIR LOS DATOS ACTUALES DEL NAVEGADOR
+    if(
+      !remote ||
+      typeof remote !== "object" ||
+      Object.keys(remote).length === 0
+    ){
+
+      save();
+
+    }
+
+    render();
+
+  } catch(e){
+
+    console.warn(
+      "Modo local temporal:",
+      e
+    );
+
+    remoteReady = true;
+
   }
+
 }
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function client(id){return data.clients.find(c=>c.id===id)}
