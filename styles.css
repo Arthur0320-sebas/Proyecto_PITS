@@ -40,3 +40,104 @@
 .past-accounts-box{margin-top:18px;padding:14px;border:1px solid rgba(255,255,255,.12);border-radius:14px}.past-accounts-box h3{margin:0 0 8px}
 
 .past-date-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}.cash-total b{font-size:1.5rem;display:block;margin-top:6px}.opening-balance{display:flex;align-items:center;justify-content:space-between;gap:12px}
+/* ================================
+   SELECTOR DE FECHA DEL DASHBOARD
+   ================================ */
+
+.dashboard-date-control{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.date-arrow{
+  width:42px;
+  height:42px;
+  border:1px solid #d8dde3;
+  background:#ffffff;
+  color:#2d3742;
+  border-radius:10px;
+  font-size:28px;
+  font-weight:500;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:all .2s ease;
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+
+.date-arrow:hover{
+  background:#f5f6f8;
+  border-color:#f5232d;
+  color:#f5232d;
+  transform:translateY(-1px);
+}
+
+.date-picker-box{
+  height:42px;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  padding:0 12px;
+  background:#ffffff;
+  border:1px solid #d8dde3;
+  border-radius:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.05);
+}
+
+.calendar-icon{
+  font-size:16px;
+}
+
+.date-picker-box input[type="date"]{
+  border:none;
+  outline:none;
+  background:transparent;
+  color:#2d3742;
+  font-size:15px;
+  font-weight:600;
+  font-family:inherit;
+  cursor:pointer;
+}
+
+.selected-date-text{
+  color:#697586;
+  font-size:14px;
+  font-weight:500;
+  text-transform:capitalize;
+  white-space:nowrap;
+  padding-left:4px;
+}
+
+.today-button{
+  height:42px;
+  padding:0 16px;
+  border:1px solid #d8dde3;
+  background:#ffffff;
+  color:#2d3742;
+  border-radius:10px;
+  font-size:14px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+
+.today-button:hover{
+  background:#f5232d;
+  border-color:#f5232d;
+  color:#ffffff;
+}
+
+/* Para pantallas pequeñas */
+@media(max-width:900px){
+  .dashboard-date-control{
+    justify-content:flex-end;
+  }
+
+  .selected-date-text{
+    width:100%;
+    text-align:right;
+  }
+}
