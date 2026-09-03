@@ -93,6 +93,8 @@ data.employees.length||(data.employees=structuredClone(defaultData.employees));
 data.services=structuredClone(defaultData.services);
 data.appointments.forEach(a=>{a.employeeIds??=[];a.status??="scheduled";a.paymentStatus??="pending";a.commissions??=[];a.courtesy??=false;});
 materializeRecurring();
+// No guardar automáticamente aquí.
+// Primero se cargan los datos reales desde PostgreSQL.
 save();
 
 function save(){
@@ -114,20 +116,19 @@ async function loadSharedData(){
 
     const remote = await r.json();
 
-    if(
-      remote &&
-      typeof remote === "object"
-    ){
+if (
+    remote &&
+    remote.ok === true &&
+    remote.data &&
+    typeof remote.data === "object"
+) {
+    data = remote.data;
 
-      data = remote;
-
-      localStorage.setItem(
+    localStorage.setItem(
         KEY,
         JSON.stringify(data)
-      );
-
-    }
-
+    );
+}
     remoteReady = true;
 
     // SI LA BASE DE DATOS ESTÁ VACÍA,
