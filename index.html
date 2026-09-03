@@ -416,10 +416,13 @@ function dashboard(){
   .filter(e=>e.date===d)
   .reduce((s,e)=>s+(+e.amount||0),0);
 
- const pendingToday = today
-  .filter(a => a.status !== "cancelled" && a.status !== "completed")
+ const pendingToday = data.appointments
+  .filter(a =>
+    a.status !== "cancelled" &&
+    a.status !== "completed" &&
+    a.paymentStatus === "pending"
+  )
   .reduce((s, a) => s + (Number(a.total) || 0), 0);
-
  // Comisión generada por los servicios terminados en la fecha seleccionada.
  const salaries=today
   .filter(a=>a.status==="completed")
