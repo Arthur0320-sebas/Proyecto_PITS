@@ -198,45 +198,7 @@ app.put('/api/state', async (req, res) => {
   }
 
 });
-// ==========================================
-// VERIFICAR DATOS GUARDADOS EN POSTGRESQL
-// ==========================================
 
-app.get('/api/db-status', async (req, res) => {
-
-  try {
-
-    const result = await pool.query(`
-      SELECT
-        id,
-        updated_at,
-        jsonb_array_length(
-          COALESCE(data->'appointments', '[]'::jsonb)
-        ) AS total_citas,
-        jsonb_array_length(
-          COALESCE(data->'clients', '[]'::jsonb)
-        ) AS total_clientes
-      FROM app_state
-      WHERE id = 1
-    `);
-
-    res.json({
-      ok: true,
-      datos: result.rows[0] || null
-    });
-
-  } catch (error) {
-
-    console.error('Error verificando PostgreSQL:', error);
-
-    res.status(500).json({
-      ok: false,
-      error: error.message
-    });
-
-  }
-
-});
 // ==========================================
 // ABRIR INDEX.HTML
 // ==========================================
