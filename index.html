@@ -416,10 +416,9 @@ function dashboard(){
   .filter(e=>e.date===d)
   .reduce((s,e)=>s+(+e.amount||0),0);
 
- const pendingToday = data.appointments
+ const pendingToday = today
   .filter(a =>
     a.status !== "cancelled" &&
-    a.status !== "completed" &&
     a.paymentStatus === "pending"
   )
   .reduce((s, a) => s + (Number(a.total) || 0), 0);
