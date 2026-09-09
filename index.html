@@ -555,7 +555,7 @@ function saveRecurring(){
 }
 function materializeRecurring(){
  const rules=data.recurring||[], horizon=new Date(); horizon.setDate(horizon.getDate()+180);
- rules.forEach(r=>{let d=new Date((r.start||TODAY())+"T12:00:00");while(d<=horizon){if(r.days.includes(d.getDay())){const ds=d.toISOString().slice(0,10);if(!data.appointments.some(a=>a.recurringId===r.id&&a.date===ds))data.appointments.push({id:uid(),recurringId:r.id,clientId:r.clientId,date:ds,time:r.time,vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,courtesy:false,status:"scheduled",paymentStatus:"pending",employeeIds:[],commissions:[]});}d.setDate(d.getDate()+1)}});
+ rules.forEach(r=>{let d=new Date((r.start||TODAY())+"T12:00:00");while(d<=horizon){if(r.days.includes(d.getDay())){const ds=d.toISOString().slice(0,10);if(!data.appointments.some(a=>a.recurringId===r.id&&a.date===ds))data.appointments.push({id:uid(),recurringId:r.id,clientId:r.clientId,date:ds,time:r.time,vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,courtesy:false,status:"scheduled",paymentStatus:"pending",employeeIds:[],commissions:[],endTime:""});}d.setDate(d.getDate()+1)}});
 }
 function agenda(){
  const selected=agendaDate;
@@ -565,7 +565,9 @@ function agenda(){
  const positioned=arr.map(a=>{
    const [hh,mm]=(a.time||"08:00").split(":").map(Number);
    const start=(hh*60+mm)-(startHour*60);
-   const duration=60,end=start+duration;
+   let duration=60;
+   if(a.time&&a.endTime){const [eh,em]=a.endTime.split(":").map(Number);const endMinutes=eh*60+em;const startMinutes=hh*60+mm;if(endMinutes>startMinutes)duration=endMinutes-startMinutes;}
+   const end=start+duration;
    let lane=0; while(lanes[lane]!==undefined&&lanes[lane]>start)lane++; lanes[lane]=end;
    return {...a,top:Math.max(0,start/60*pxHour),height:Math.max(58,duration/60*pxHour-6),lane};
  });
@@ -577,7 +579,7 @@ function agenda(){
    const workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ");
    return `<div class="agenda-event ${a.status==="in_progress"?"event-working":a.status==="completed"?"event-done":""}" style="top:${a.top}px;height:${a.height}px;left:${left};width:${width}" onclick="openAppointment('${a.id}')">
      <b>${esc(c?.name||"Cliente")}</b><span>${esc(c?.address||"")}</span>
-     <small>${esc(a.serviceName||"Servicio por definir")}${workers?` · 👷 ${esc(workers)}`:""}</small>
+     <small>${esc(a.time||"")}${a.endTime?` — ${esc(a.endTime)}`:""}${a.time?" · ":""}${esc(a.serviceName||"Servicio por definir")}${workers?` · 👷 ${esc(workers)}`:""}</small>
      ${due>0?`<em>Pendiente ${money(due)}</em>`:""}
    </div>`;
  }).join("");
@@ -592,12 +594,12 @@ function agendaSetDate(v){if(!v)return;agendaDate=v;render("agenda")}
 function appointmentRow(a){
  const c=client(a.clientId),workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ")||"Sin asignar";
  const due=apptDue(a.id);
- return `<div class="appointment-row" onclick="openAppointment('${a.id}')"><div class="time">${a.time||"--:--"}</div><div class="grow"><b>${esc(c?.name||"Cliente")}</b><small>${esc(c?.address||"")} · ${esc(a.serviceName||"Servicio por definir")} · 👷 ${esc(workers)}</small></div><span class="status">${a.status==="in_progress"?"🔴 Lavando":a.status==="completed"?"🟢 Realizado":"🟡 Agendada"}</span><b>${a.total?money(a.total):"—"}</b><span class="pill ${due>0?'pending':'paid'}">${due>0?"PENDIENTE":"PAGADO"}</span></div>`;
+ return `<div class="appointment-row" onclick="openAppointment('${a.id}')"><div class="time">${a.time||"--:--"}${a.endTime?`–${a.endTime}`:""}</div><div class="grow"><b>${esc(c?.name||"Cliente")}</b><small>${esc(c?.address||"")} · ${esc(a.serviceName||"Servicio por definir")} · 👷 ${esc(workers)}</small></div><span class="status">${a.status==="in_progress"?"🔴 Lavando":a.status==="completed"?"🟢 Realizado":"🟡 Agendada"}</span><b>${a.total?money(a.total):"—"}</b><span class="pill ${due>0?'pending':'paid'}">${due>0?"PENDIENTE":"PAGADO"}</span></div>`;
 }
 
 function newAppointment(preset="",date=TODAY()){openAppointment(null,preset,date)}
 function openAppointment(id,preset="",presetDate=agendaDate){
- const a=id?appointment(id):{clientId:preset,date:presetDate||TODAY(),time:"",vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,status:"scheduled",paymentStatus:"pending",employeeIds:[]};
+ const a=id?appointment(id):{clientId:preset,date:presetDate||TODAY(),time:"",vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,status:"scheduled",paymentStatus:"pending",employeeIds:[],endTime:""};
  const edit=!!id;
  const clientName=client(a.clientId)?.name||"";
  showModal(edit?"Detalle del servicio":"Nueva cita",`
@@ -611,7 +613,8 @@ function openAppointment(id,preset="",presetDate=agendaDate){
     <small class="picker-help">Clientes en orden alfabético · puedes escribir para encontrarlo.</small>
   </label>
   <label>Fecha<input id="f_date" type="date" value="${a.date||TODAY()}"></label>
-  <label>Hora<input id="f_time" type="time" value="${a.time||""}"></label>
+  <label>Hora de inicio<input id="f_time" type="time" value="${a.time||""}"></label>
+  <label>Hora de término<input id="f_endTime" type="time" value="${a.endTime||""}"></label>
   ${edit?`
    <label>Vehículo<select id="f_vehicle" onchange="vehicleChanged()"><option value="">Seleccionar</option><option ${a.vehicleType==="Auto"?'selected':''}>Auto</option><option ${a.vehicleType==="Camioneta"?'selected':''}>Camioneta</option><option ${a.vehicleType==="Moto"?'selected':''}>Moto</option></select></label>
    <div id="sizeBox" class="${a.vehicleType==="Camioneta"?'':'hidden'}"><label>Tamaño<select id="f_size" onchange="serviceChanged()"><option value="">Seleccionar</option><option ${a.vehicleSize==="Mediana"?'selected':''}>Mediana</option><option ${a.vehicleSize==="Grande"?'selected':''}>Grande</option><option ${a.vehicleSize==="Extra grande"?'selected':''}>Extra grande</option></select></label></div>
@@ -694,7 +697,10 @@ function saveAppointment(id){
  const normalPrice=+(s?.price||0);
  const total=courtesy?0:(+(document.getElementById("f_total")?.value||0));
  const ids=[...document.querySelectorAll('input[name="worker"]:checked')].map(x=>x.value);
- const obj={clientId,date:document.getElementById("f_date").value,time:document.getElementById("f_time").value,vehicleType:vehicle,vehicleSize:size,serviceId:s?.id||"",serviceName:s?.name||"",total,courtesy,courtesyBase:normalPrice,status:old?.status||"scheduled",employeeIds:ids,paymentStatus:courtesy?"courtesy":(old?.paymentStatus||"pending")};
+ const startTime=document.getElementById("f_time").value;
+ const endTime=document.getElementById("f_endTime")?.value||"";
+ if(startTime&&endTime&&endTime<=startTime)return alert("La hora de término debe ser después de la hora de inicio.");
+ const obj={clientId,date:document.getElementById("f_date").value,time:startTime,endTime,vehicleType:vehicle,vehicleSize:size,serviceId:s?.id||"",serviceName:s?.name||"",total,courtesy,courtesyBase:normalPrice,status:old?.status||"scheduled",employeeIds:ids,paymentStatus:courtesy?"courtesy":(old?.paymentStatus||"pending")};
  if(obj.status==="completed"&&ids.length)obj.commissions=commissionsFor({...obj});
  else obj.commissions=old?.commissions||[];
  if(id)Object.assign(old,obj);else data.appointments.push({id:uid(),...obj,commissions:[]});
@@ -707,7 +713,7 @@ function clientes(){
 }
 function renderClientList(){
  const el=document.getElementById("clientList");if(!el)return;
- el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th></tr></thead><tbody>${data.clients.map(c=>{
+ el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th></tr></thead><tbody>${[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'})).map(c=>{
   const aa=data.appointments.filter(a=>a.clientId===c.id).sort((x,y)=>(y.date+y.time).localeCompare(x.date+x.time));
   const pendingC=aa.reduce((s,a)=>s+apptDue(a.id),0);
   const last=aa[0];
