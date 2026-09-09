@@ -379,6 +379,7 @@ document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>render(b.dataset.view
 
 function stat(t,v,k,s){return `<div class="stat ${k}"><span>${t}</span><b>${v}</b><small>${s}</small></div>`}
 let dashboardDate=TODAY();
+let pagosDate=TODAY();
 
 function changeDashboardDate(days){
  const fecha=new Date(dashboardDate+"T12:00:00");
@@ -744,73 +745,36 @@ function servicios(){
 }
 
 function pagos(){
- const rows=data.appointments.filter(a=>(((+a.total||0)>0)||a.courtesy)&&a.status!=="cancelled");
- const total=rows.reduce((s,a)=>s+a.total,0),received=data.payments.reduce((s,p)=>s+p.amount,0),due=rows.reduce((s,a)=>s+apptDue(a.id),0);
- const cash= data.payments.reduce((s,p)=>s+(p.method==="Efectivo"?+p.amount:0),0);
- const bank= data.payments.reduce((s,p)=>s+(p.method==="Transferencia"?+p.amount:0),0);
- const tips=tipTotal();
- return `<div class="grid three">${stat("Ventas",money(total),"green","servicios con importe")}${stat("Cobrado",money(received),"blue",`💵 Efectivo ${money(cash)} · 🏦 Transferencia ${money(bank)}`)}${stat("Pendiente",money(due),"amber","por cobrar")}</div>
- <div class="panel"><div class="panel-title">Control de pagos <button class="btn red" onclick="openPayment()">+ Registrar pago</button></div>
- <div class="payment-summary"><span>💵 Efectivo <b>${money(cash)}</b></span><span>🏦 Transferencia <b>${money(bank)}</b></span><span>🎁 Propinas <b>${money(tips)}</b></span></div>
- <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Servicio</th><th>Importe</th><th>Pagado</th><th>Forma</th><th>Propina</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(a=>{
-  const dueA=apptDue(a.id),pays=data.payments.filter(p=>p.appointmentId===a.id),c=client(a.clientId),atips=data.tips.filter(t=>t.appointmentId===a.id).reduce((s,t)=>s+t.amount,0);
-  return `<tr><td><b>${esc(c?.name||"")}</b></td><td>${esc(a.serviceName)}</td><td>${a.courtesy?"$0 (Cortesía)":money(a.total)}</td><td>${money(apptPaid(a.id))}</td><td>${a.courtesy?"Cortesía":pays.map(p=>p.method).join(" + ")||"—"}</td><td>${atips?money(atips):"—"}</td><td><span class="pill ${a.courtesy?"paid":dueA?"pending":"paid"}">${a.courtesy?"Cortesía":dueA?`Pendiente ${money(dueA)}`:"Pagado"}</span></td><td>${dueA&&!a.courtesy?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:"✓"}</td></tr>`;
- }).join("")||`<tr><td colspan="8" class="empty">No hay servicios con importe.</td></tr>`}</tbody></table></div></div>`;
+  const d=pagosDate;
+  const rows=data.appointments.filter(a=>a.date===d&&(((+a.total||0)>0)||a.courtesy)&&a.status!=="cancelled");
+  const paymentsDay=data.payments.filter(p=>p.date===d);
+  const total=rows.reduce((s,a)=>s+(+a.total||0),0);
+  const received=paymentsDay.reduce((s,p)=>s+(+p.amount||0),0);
+  const due=rows.reduce((s,a)=>s+apptDue(a.id),0);
+  const cash=paymentsDay.reduce((s,p)=>s+(p.method==="Efectivo"?+p.amount:0),0);
+  const bank=paymentsDay.reduce((s,p)=>s+(p.method==="Transferencia"?+p.amount:0),0);
+  const tips=data.tips.filter(t=>t.date===d).reduce((s,t)=>s+(+t.amount||0),0);
+  const dateText=new Date(d+"T12:00:00").toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
+  return `<div class="toolbar">
+    <div><b>Pagos</b><span class="muted">${dateText}</span></div>
+    <div class="agenda-controls" style="margin:0">
+      <button class="mini" onclick="pagosMove(-1)">← Día anterior</button>
+      <button class="mini" onclick="pagosToday()">Hoy</button>
+      <input type="date" value="${d}" onchange="pagosSetDate(this.value)">
+      <button class="mini" onclick="pagosMove(1)">Día siguiente →</button>
+    </div>
+  </div>
+  <div class="grid three">${stat("Ventas",money(total),"green",rows.length+" servicios del día")}${stat("Cobrado",money(received),"blue",`💵 Efectivo ${money(cash)} · 🏦 Transferencia ${money(bank)}`)}${stat("Pendiente",money(due),"amber","por cobrar de ese día")}</div>
+  <div class="panel"><div class="panel-title">Control de pagos · ${dateText} <button class="btn red" onclick="openPayment()">+ Registrar pago</button></div>
+  <div class="payment-summary"><span>💵 Efectivo <b>${money(cash)}</b></span><span>🏦 Transferencia <b>${money(bank)}</b></span><span>🎁 Propinas <b>${money(tips)}</b></span></div>
+  <div class="table-wrap"><table><thead><tr><th>Hora</th><th>Cliente</th><th>Servicio</th><th>Importe</th><th>Pagado ese día</th><th>Forma</th><th>Propina</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(a=>{
+   const dueA=apptDue(a.id),pays=paymentsDay.filter(p=>p.appointmentId===a.id),c=client(a.clientId),atips=data.tips.filter(t=>t.appointmentId===a.id&&t.date===d).reduce((s,t)=>s+(+t.amount||0),0),paidDay=pays.reduce((s,p)=>s+(+p.amount||0),0);
+   return `<tr><td>${esc(a.time||"—")}</td><td><b>${esc(c?.name||"")}</b></td><td>${esc(a.serviceName)}</td><td>${a.courtesy?"$0 (Cortesía)":money(a.total)}</td><td>${money(paidDay)}</td><td>${a.courtesy?"Cortesía":pays.map(p=>p.method).join(" + ")||"—"}</td><td>${atips?money(atips):"—"}</td><td><span class="pill ${a.courtesy?"paid":dueA?"pending":"paid"}">${a.courtesy?"Cortesía":dueA?`Pendiente ${money(dueA)}`:"Pagado"}</span></td><td>${dueA&&!a.courtesy?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:"✓"}</td></tr>`;
+  }).join("")||`<tr><td colspan="9" class="empty">No hay servicios con importe en este día.</td></tr>`}</tbody></table></div></div>`;
 }
-function openPayment(pre=""){
- const list=pending(), selected=list.find(a=>a.id===pre)||list[0];
- showModal("Registrar pago",selected?`<div class="form-grid">
- <label class="wide">Servicio pendiente<select id="p_appt" onchange="paymentAmount()">${list.map(a=>`<option value="${a.id}" ${a.id===selected.id?'selected':''}>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</option>`).join("")}</select></label>
- <label>Monto recibido<input id="p_amount" type="number" value="${apptDue(selected.id)}" oninput="updatePaymentTip()"></label>
- <label>Forma de pago<select id="p_method"><option>Efectivo</option><option>Transferencia</option></select></label>
- <label>Fecha<input id="p_date" type="date" value="${TODAY()}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
- <div class="wide payment-tip-box"><span>🎁 Propina detectada</span><b id="p_tip">$0</b><small>Si recibes más que el importe, la diferencia se registra como propina.</small></div>
- <label class="wide">Propina para<div class="checks">${(selected.employeeIds||[]).map(id=>`<label class="check"><input type="checkbox" name="tipemp" value="${id}" checked> ${esc(employee(id)?.name||"Empleado")}</label>`).join("")||`<span class="muted">No hay empleado asignado a este servicio.</span>`}</div></label>
- </div>
- <div class="note">Ejemplo: servicio $180, recibes $200 → $180 se registra como ingreso del servicio y $20 como propina. La propina se paga en efectivo y se descuenta de Caja.</div>
- <div class="modal-actions"><button class="btn red" onclick="savePayment()">Registrar pago</button></div>`:`<div class="empty">No hay cuentas pendientes de pago.</div>`);
- updatePaymentTip();
-}
-function paymentAmount(){const a=appointment(document.getElementById("p_appt").value);document.getElementById("p_amount").value=apptDue(a.id);updatePaymentTip()}
-function updatePaymentTip(){
- const a=appointment(document.getElementById("p_appt")?.value),amount=+(document.getElementById("p_amount")?.value||0),tip=Math.max(0,amount-(a?apptDue(a.id):0));
- const el=document.getElementById("p_tip");if(el)el.textContent=money(tip);
-}
-function savePayment(){
- const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
- if(!a||amount<=0)return;
- let remaining=amount;
- const dueBefore=apptDue(a.id);
- if(dueBefore<=0)return;
-
- // Si el cliente tiene saldo a favor, se usa primero para cubrir este servicio.
- const credit=clientCredit(a.clientId);
- const useCredit=Math.min(credit,dueBefore,remaining);
- if(useCredit>0){
-   const c=client(a.clientId);
-   c.creditBalance=Math.max(0,credit-useCredit);
-   data.creditTransactions.push({id:uid(),type:"apply",clientId:c.id,appointmentId:a.id,amount:useCredit,date:document.getElementById("p_date").value,note:"Aplicado al registrar pago"});
-   remaining-=useCredit;
- }
-
- // Solo el dinero realmente recibido hoy entra a efectivo/banco.
- const serviceAmount=Math.min(remaining,Math.max(0,dueBefore-useCredit));
- const tip=Math.max(0,remaining-Math.max(0,dueBefore-useCredit));
- if(serviceAmount>0){
-   data.payments.push({id:uid(),appointmentId:a.id,clientId:a.clientId,amount:serviceAmount,method,date:document.getElementById("p_date").value});
-   if(method==="Efectivo")data.cash.efectivo+=serviceAmount;else data.cash.banco+=serviceAmount;
- }
- if(tip>0){
-   const ids=[...document.querySelectorAll('input[name="tipemp"]:checked')].map(x=>x.value);
-   const targets=ids.length?ids:(a.employeeIds||[]);
-   const share=targets.length?tip/targets.length:tip;
-   if(targets.length)targets.forEach(eid=>data.tips.push({id:uid(),appointmentId:a.id,employeeId:eid,amount:share,method:"Efectivo",date:document.getElementById("p_date").value}));
-   else data.tips.push({id:uid(),appointmentId:a.id,employeeId:"",amount:tip,method:"Efectivo",date:document.getElementById("p_date").value});
-   data.cash.efectivo-=tip;
- }
- a.paymentStatus=apptDue(a.id)<=0?"paid":"partial";
- save();closeModal();render("pagos");
-}
+function pagosMove(days){const d=new Date(pagosDate+"T12:00:00");d.setDate(d.getDate()+days);pagosDate=d.toISOString().slice(0,10);render("pagos")}
+function pagosToday(){pagosDate=TODAY();render("pagos")}
+function pagosSetDate(v){if(!v)return;pagosDate=v;render("pagos")}
 
 function gastos(){
  return `<div class="toolbar"><span>Gasolina · Refrescos · Productos · Otros</span><button class="btn red" onclick="openExpense()">+ Nuevo gasto</button></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th><th>Método</th><th>Ticket</th></tr></thead><tbody>${data.expenses.map(e=>`<tr><td>${e.date}</td><td>${e.category}</td><td>${esc(e.description)}</td><td class="danger">${money(e.amount)}</td><td>${e.method}</td><td>${e.ticket?"📎":"—"}</td></tr>`).join("")||`<tr><td colspan="6" class="empty">No hay gastos.</td></tr>`}</tbody></table></div></div>`;
@@ -895,27 +859,44 @@ function reportes(){
 function toggleReport(daily){document.getElementById("dailyReport").classList.toggle("hidden",!daily);document.getElementById("monthlyReport").classList.toggle("hidden",daily);document.querySelectorAll(".report-tab").forEach((b,i)=>b.classList.toggle("active",daily?i===0:i===1))}
 
 function downloadReport(type){
- const rows=[]; let filename;
- if(type==='daily'){
-  filename=`reporte_diario_${TODAY()}.csv`;
-  rows.push(['Nombre del cliente','Dirección','Servicio','Forma de pago','Estado']);
-  data.appointments.filter(a=>a.date===TODAY()&&a.status!=='cancelled').forEach(a=>{
-   const c=client(a.clientId), pays=data.payments.filter(p=>p.appointmentId===a.id);
-   rows.push([c?.name||'',c?.address||'',a.serviceName||'Por definir',pays.map(p=>p.method).join(' + ')||'',apptDue(a.id)>0?'Pendiente':'Pagado']);
-  });
- }else{
-  const month=TODAY().slice(0,7), groups={}; filename=`reporte_mensual_${month}.csv`;
-  data.appointments.filter(a=>a.date?.startsWith(month)&&a.status!=='cancelled').forEach(a=>{
-   const k=a.serviceName||'Por definir'; groups[k]??={importe:0,transfer:0,cash:0,pending:0}; groups[k].importe+=+a.total||0;
-   data.payments.filter(p=>p.appointmentId===a.id).forEach(p=>p.method==='Transferencia'?groups[k].transfer+=+p.amount||0:groups[k].cash+=+p.amount||0);
-   groups[k].pending+=apptDue(a.id);
-  });
-  rows.push(['Servicio','Importe','Transferencia','Efectivo','Cuentas por pagar']);
-  Object.entries(groups).forEach(([k,r])=>rows.push([k,r.importe,r.transfer,r.cash,r.pending]));
- }
- const csv='\\ufeff'+rows.map(r=>r.map(v=>`"${String(v??'').replace(/"/g,'""')}"`).join(',')).join('\\r\\n');
- const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'}),url=URL.createObjectURL(blob),a=document.createElement('a');
- a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  const month=TODAY().slice(0,7), date=TODAY();
+  const rowsDaily=data.appointments.filter(a=>a.date===date&&a.status!=="cancelled");
+  const rowsMonth=data.appointments.filter(a=>a.date?.startsWith(month)&&a.status!=="cancelled");
+  const escXls=s=>String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  const moneyXls=n=>Number(n||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
+  let html=`<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#20262b}h1{font-size:22px}h2{font-size:16px;margin-top:22px}table{border-collapse:collapse;width:100%;margin-bottom:20px}th{background:#e9ecef;font-weight:bold}th,td{border:1px solid #cfd4d8;padding:7px;text-align:left}td.num{text-align:right}.total{font-weight:bold;background:#f5f5f5}.sub{color:#666}</style></head><body><h1>Autolavado Pits</h1>`;
+  if(type==="daily"){
+    const paymentsDay=data.payments.filter(p=>p.date===date);
+    const cash=paymentsDay.filter(p=>p.method==="Efectivo").reduce((s,p)=>s+(+p.amount||0),0);
+    const bank=paymentsDay.filter(p=>p.method==="Transferencia").reduce((s,p)=>s+(+p.amount||0),0);
+    const total=paymentsDay.reduce((s,p)=>s+(+p.amount||0),0);
+    const tips=data.tips.filter(t=>t.date===date).reduce((s,t)=>s+(+t.amount||0),0);
+    html+=`<h2>Reporte diario · ${date}</h2><table><tr><th>Resumen</th><th>Monto</th></tr><tr><td>Total cobrado</td><td class="num">$${moneyXls(total)}</td></tr><tr><td>Efectivo</td><td class="num">$${moneyXls(cash)}</td></tr><tr><td>Transferencias</td><td class="num">$${moneyXls(bank)}</td></tr><tr><td>Propinas</td><td class="num">$${moneyXls(tips)}</td></tr></table>`;
+    html+=`<h2>Servicios del día</h2><table><tr><th>Hora</th><th>Cliente</th><th>Dirección</th><th>Servicio</th><th>Importe</th><th>Pagado</th><th>Pendiente</th><th>Forma de pago</th><th>Estado</th></tr>`;
+    rowsDaily.forEach(a=>{
+      const c=client(a.clientId), pays=paymentsDay.filter(p=>p.appointmentId===a.id);
+      const paid=pays.reduce((s,p)=>s+(+p.amount||0),0);
+      html+=`<tr><td>${escXls(a.time||"")}</td><td>${escXls(c?.name||"")}</td><td>${escXls(c?.address||"")}</td><td>${escXls(a.serviceName||"Por definir")}</td><td class="num">$${moneyXls(a.total)}</td><td class="num">$${moneyXls(paid)}</td><td class="num">$${moneyXls(apptDue(a.id))}</td><td>${escXls(pays.map(p=>p.method).join(" + ")||"—")}</td><td>${a.courtesy?"Cortesía":apptDue(a.id)>0?"Pendiente":"Pagado"}</td></tr>`;
+    });
+    html+=`<tr class="total"><td colspan="4">TOTAL</td><td class="num">$${moneyXls(rowsDaily.reduce((s,a)=>s+(+a.total||0),0))}</td><td class="num">$${moneyXls(total)}</td><td class="num">$${moneyXls(rowsDaily.reduce((s,a)=>s+apptDue(a.id),0))}</td><td colspan="2"></td></tr></table>`;
+  }else{
+    const groups={};
+    rowsMonth.forEach(a=>{
+      const k=a.serviceName||"Por definir"; groups[k]??={importe:0,transfer:0,cash:0,pending:0,count:0};
+      groups[k].importe+=+a.total||0; groups[k].count++;
+      data.payments.filter(p=>p.appointmentId===a.id).forEach(p=>p.method==="Transferencia"?groups[k].transfer+=+p.amount||0:groups[k].cash+=+p.amount||0);
+      groups[k].pending+=apptDue(a.id);
+    });
+    html+=`<h2>Reporte mensual · ${month}</h2><table><tr><th>Servicio</th><th>Servicios</th><th>Importe</th><th>Transferencia</th><th>Efectivo</th><th>Pendiente</th></tr>`;
+    let ti=0,tt=0,tc=0,tp=0,tn=0;
+    Object.entries(groups).forEach(([k,r])=>{ti+=r.importe;tt+=r.transfer;tc+=r.cash;tp+=r.pending;tn+=r.count;html+=`<tr><td>${escXls(k)}</td><td class="num">${r.count}</td><td class="num">$${moneyXls(r.importe)}</td><td class="num">$${moneyXls(r.transfer)}</td><td class="num">$${moneyXls(r.cash)}</td><td class="num">$${moneyXls(r.pending)}</td></tr>`});
+    html+=`<tr class="total"><td>TOTAL</td><td class="num">${tn}</td><td class="num">$${moneyXls(ti)}</td><td class="num">$${moneyXls(tt)}</td><td class="num">$${moneyXls(tc)}</td><td class="num">$${moneyXls(tp)}</td></tr></table>`;
+  }
+  html+=`<p class="sub">Generado por Pits Admin · ${new Date().toLocaleString("es-MX")}</p></body></html>`;
+  const blob=new Blob([html],{type:"application/vnd.ms-excel;charset=utf-8;"});
+  const url=URL.createObjectURL(blob),a=document.createElement("a");
+  a.href=url;a.download=`reporte_${type==="daily"?"diario_"+date:"mensual_"+month}.xls`;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
 }
 
 function showModal(title,body){document.getElementById("modalTitle").innerHTML=title;document.getElementById("modalBody").innerHTML=body;document.getElementById("modal").classList.remove("hidden")}
