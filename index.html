@@ -783,7 +783,9 @@ function pagosToday(){pagosDate=TODAY();render("pagos")}
 function pagosSetDate(v){if(!v)return;pagosDate=v;render("pagos")}
 
 function openPayment(pre=""){
- const dayList=data.appointments.filter(a=>a.date===pagosDate&&a.status!=="cancelled"&&!a.courtesy);
+ const preAppt=pre?appointment(pre):null;
+ const targetDate=preAppt?.date||pagosDate;
+ const dayList=data.appointments.filter(a=>a.date===targetDate&&a.status!=="cancelled"&&!a.courtesy);
  const dayPendingList=dayList.filter(a=>apptDue(a.id)>0);
  const list=dayPendingList.length?dayPendingList:dayList;
  const selected=list.find(a=>a.id===pre)||list[0];
@@ -791,7 +793,7 @@ function openPayment(pre=""){
  <label class="wide">Servicio pendiente<select id="p_appt" onchange="paymentAmount()">${list.map(a=>`<option value="${a.id}" ${a.id===selected.id?'selected':''}>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</option>`).join("")}</select></label>
  <label>Monto recibido<input id="p_amount" type="number" value="${apptDue(selected.id)}" oninput="updatePaymentTip()"></label>
  <label>Forma de pago<select id="p_method"><option>Efectivo</option><option>Transferencia</option></select></label>
- <label>Fecha<input id="p_date" type="date" value="${pagosDate}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
+ <label>Fecha<input id="p_date" type="date" value="${targetDate}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
  <div class="wide payment-tip-box"><span>🎁 Propina detectada</span><b id="p_tip">$0</b><small>Si recibes más que el importe, la diferencia se registra como propina.</small></div>
  <label class="wide">Propina para<div class="checks">${(selected.employeeIds||[]).map(id=>`<label class="check"><input type="checkbox" name="tipemp" value="${id}" checked> ${esc(employee(id)?.name||"Empleado")}</label>`).join("")||`<span class="muted">No hay empleado asignado a este servicio.</span>`}</div></label>
  </div>
@@ -806,7 +808,7 @@ function updatePaymentTip(){
 }
 function savePayment(){
  const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
- const paymentDate=pagosDate;
+ const paymentDate=a?.date||pagosDate;
  if(!a||a.date!==paymentDate||amount<=0)return;
  let remaining=amount;
  const dueBefore=apptDue(a.id);
