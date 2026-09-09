@@ -160,6 +160,14 @@ if (
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function client(id){return data.clients.find(c=>c.id===id)}
 function appointment(id){return data.appointments.find(a=>a.id===id)}
+function paymentBelongsToDate(p,date){
+ const a=appointment(p.appointmentId);
+ return a ? a.date===date : p.date===date;
+}
+function tipBelongsToDate(t,date){
+ const a=appointment(t.appointmentId);
+ return a ? a.date===date : t.date===date;
+}
 function employee(id){return data.employees.find(e=>e.id===id)}
 function apptPaid(id){return data.payments.filter(p=>p.appointmentId===id).reduce((s,p)=>s+(+p.amount||0),0)}
 function apptCreditApplied(id){return data.creditTransactions.filter(t=>t.type==="apply"&&t.appointmentId===id).reduce((s,t)=>s+(+t.amount||0),0)}
@@ -410,7 +418,7 @@ function dashboard(){
  const sold=today.reduce((s,a)=>s+(+a.total||0),0);
 
  const paid=data.payments
-  .filter(p=>p.date===d)
+  .filter(p=>paymentBelongsToDate(p,d))
   .reduce((s,p)=>s+(+p.amount||0),0);
 
  const exp=data.expenses
@@ -435,11 +443,11 @@ function dashboard(){
 
  // Movimientos de dinero de la fecha seleccionada.
  const cashIn=data.payments
-  .filter(p=>p.date===d&&p.method==="Efectivo")
+  .filter(p=>paymentBelongsToDate(p,d)&&p.method==="Efectivo")
   .reduce((s,p)=>s+(+p.amount||0),0);
 
  const bankIn=data.payments
-  .filter(p=>p.date===d&&p.method==="Transferencia")
+  .filter(p=>paymentBelongsToDate(p,d)&&p.method==="Transferencia")
   .reduce((s,p)=>s+(+p.amount||0),0);
 
  const cashExpenses=data.expenses
@@ -459,7 +467,7 @@ function dashboard(){
   .reduce((s,p)=>s+(+p.amount||0),0);
 
  const tipsPaid=data.tips
-  .filter(t=>t.date===d)
+  .filter(t=>tipBelongsToDate(t,d))
   .reduce((s,t)=>s+(+t.amount||0),0);
 
  const cashOut=cashExpenses+cashEmployeePayments+tipsPaid;
@@ -753,13 +761,13 @@ function servicios(){
 function pagos(){
   const d=pagosDate;
   const rows=data.appointments.filter(a=>a.date===d&&(((+a.total||0)>0)||a.courtesy)&&a.status!=="cancelled");
-  const paymentsDay=data.payments.filter(p=>p.date===d);
+  const paymentsDay=data.payments.filter(p=>paymentBelongsToDate(p,d));
   const total=rows.reduce((s,a)=>s+(+a.total||0),0);
   const received=paymentsDay.reduce((s,p)=>s+(+p.amount||0),0);
   const due=rows.reduce((s,a)=>s+apptDue(a.id),0);
   const cash=paymentsDay.reduce((s,p)=>s+(p.method==="Efectivo"?+p.amount:0),0);
   const bank=paymentsDay.reduce((s,p)=>s+(p.method==="Transferencia"?+p.amount:0),0);
-  const tips=data.tips.filter(t=>t.date===d).reduce((s,t)=>s+(+t.amount||0),0);
+  const tips=data.tips.filter(t=>tipBelongsToDate(t,d)).reduce((s,t)=>s+(+t.amount||0),0);
   const dateText=new Date(d+"T12:00:00").toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
   return `<div class="toolbar">
     <div><b>Pagos</b><span class="muted">${dateText}</span></div>
@@ -774,7 +782,7 @@ function pagos(){
   <div class="panel"><div class="panel-title">Control de pagos · ${dateText} <button class="btn red" onclick="openPayment()">+ Registrar pago</button></div>
   <div class="payment-summary"><span>💵 Efectivo <b>${money(cash)}</b></span><span>🏦 Transferencia <b>${money(bank)}</b></span><span>🎁 Propinas <b>${money(tips)}</b></span></div>
   <div class="table-wrap"><table><thead><tr><th>Hora</th><th>Cliente</th><th>Servicio</th><th>Importe</th><th>Pagado ese día</th><th>Forma</th><th>Propina</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(a=>{
-   const dueA=apptDue(a.id),pays=paymentsDay.filter(p=>p.appointmentId===a.id),c=client(a.clientId),atips=data.tips.filter(t=>t.appointmentId===a.id&&t.date===d).reduce((s,t)=>s+(+t.amount||0),0),paidDay=pays.reduce((s,p)=>s+(+p.amount||0),0);
+   const dueA=apptDue(a.id),pays=paymentsDay.filter(p=>p.appointmentId===a.id),c=client(a.clientId),atips=data.tips.filter(t=>t.appointmentId===a.id&&tipBelongsToDate(t,d)).reduce((s,t)=>s+(+t.amount||0),0),paidDay=pays.reduce((s,p)=>s+(+p.amount||0),0);
    return `<tr><td>${esc(a.time||"—")}</td><td><b>${esc(c?.name||"")}</b></td><td>${esc(a.serviceName)}</td><td>${a.courtesy?"$0 (Cortesía)":money(a.total)}</td><td>${money(paidDay)}</td><td>${a.courtesy?"Cortesía":pays.map(p=>p.method).join(" + ")||"—"}</td><td>${atips?money(atips):"—"}</td><td><span class="pill ${a.courtesy?"paid":dueA?"pending":"paid"}">${a.courtesy?"Cortesía":dueA?`Pendiente ${money(dueA)}`:"Pagado"}</span></td><td>${dueA&&!a.courtesy?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:"✓"}</td></tr>`;
   }).join("")||`<tr><td colspan="9" class="empty">No hay servicios con importe en este día.</td></tr>`}</tbody></table></div></div>`;
 }
@@ -783,9 +791,7 @@ function pagosToday(){pagosDate=TODAY();render("pagos")}
 function pagosSetDate(v){if(!v)return;pagosDate=v;render("pagos")}
 
 function openPayment(pre=""){
- const preAppt=pre?appointment(pre):null;
- const targetDate=preAppt?.date||pagosDate;
- const dayList=data.appointments.filter(a=>a.date===targetDate&&a.status!=="cancelled"&&!a.courtesy);
+ const dayList=data.appointments.filter(a=>a.date===pagosDate&&a.status!=="cancelled"&&!a.courtesy);
  const dayPendingList=dayList.filter(a=>apptDue(a.id)>0);
  const list=dayPendingList.length?dayPendingList:dayList;
  const selected=list.find(a=>a.id===pre)||list[0];
@@ -793,7 +799,7 @@ function openPayment(pre=""){
  <label class="wide">Servicio pendiente<select id="p_appt" onchange="paymentAmount()">${list.map(a=>`<option value="${a.id}" ${a.id===selected.id?'selected':''}>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</option>`).join("")}</select></label>
  <label>Monto recibido<input id="p_amount" type="number" value="${apptDue(selected.id)}" oninput="updatePaymentTip()"></label>
  <label>Forma de pago<select id="p_method"><option>Efectivo</option><option>Transferencia</option></select></label>
- <label>Fecha<input id="p_date" type="date" value="${targetDate}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
+ <label>Fecha<input id="p_date" type="date" value="${pagosDate}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
  <div class="wide payment-tip-box"><span>🎁 Propina detectada</span><b id="p_tip">$0</b><small>Si recibes más que el importe, la diferencia se registra como propina.</small></div>
  <label class="wide">Propina para<div class="checks">${(selected.employeeIds||[]).map(id=>`<label class="check"><input type="checkbox" name="tipemp" value="${id}" checked> ${esc(employee(id)?.name||"Empleado")}</label>`).join("")||`<span class="muted">No hay empleado asignado a este servicio.</span>`}</div></label>
  </div>
@@ -808,7 +814,7 @@ function updatePaymentTip(){
 }
 function savePayment(){
  const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
- const paymentDate=a?.date||pagosDate;
+ const paymentDate=pagosDate;
  if(!a||a.date!==paymentDate||amount<=0)return;
  let remaining=amount;
  const dueBefore=apptDue(a.id);
