@@ -783,9 +783,9 @@ function pagosToday(){pagosDate=TODAY();render("pagos")}
 function pagosSetDate(v){if(!v)return;pagosDate=v;render("pagos")}
 
 function openPayment(pre=""){
- const pendingList=pending();
  const dayList=data.appointments.filter(a=>a.date===pagosDate&&a.status!=="cancelled"&&!a.courtesy);
- const list=pendingList.length?pendingList:dayList;
+ const dayPendingList=dayList.filter(a=>apptDue(a.id)>0);
+ const list=dayPendingList.length?dayPendingList:dayList;
  const selected=list.find(a=>a.id===pre)||list[0];
  showModal("Registrar pago",selected?`<div class="form-grid">
  <label class="wide">Servicio pendiente<select id="p_appt" onchange="paymentAmount()">${list.map(a=>`<option value="${a.id}" ${a.id===selected.id?'selected':''}>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</option>`).join("")}</select></label>
@@ -806,7 +806,8 @@ function updatePaymentTip(){
 }
 function savePayment(){
  const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
- if(!a||amount<=0)return;
+ const paymentDate=pagosDate;
+ if(!a||a.date!==paymentDate||amount<=0)return;
  let remaining=amount;
  const dueBefore=apptDue(a.id);
  if(dueBefore<=0)return;
@@ -817,7 +818,7 @@ function savePayment(){
  if(useCredit>0){
    const c=client(a.clientId);
    c.creditBalance=Math.max(0,credit-useCredit);
-   data.creditTransactions.push({id:uid(),type:"apply",clientId:c.id,appointmentId:a.id,amount:useCredit,date:document.getElementById("p_date").value,note:"Aplicado al registrar pago"});
+   data.creditTransactions.push({id:uid(),type:"apply",clientId:c.id,appointmentId:a.id,amount:useCredit,date:paymentDate,note:"Aplicado al registrar pago"});
    remaining-=useCredit;
  }
 
@@ -825,15 +826,15 @@ function savePayment(){
  const serviceAmount=Math.min(remaining,Math.max(0,dueBefore-useCredit));
  const tip=Math.max(0,remaining-Math.max(0,dueBefore-useCredit));
  if(serviceAmount>0){
-   data.payments.push({id:uid(),appointmentId:a.id,clientId:a.clientId,amount:serviceAmount,method,date:document.getElementById("p_date").value});
+   data.payments.push({id:uid(),appointmentId:a.id,clientId:a.clientId,amount:serviceAmount,method,date:paymentDate});
    if(method==="Efectivo")data.cash.efectivo+=serviceAmount;else data.cash.banco+=serviceAmount;
  }
  if(tip>0){
    const ids=[...document.querySelectorAll('input[name="tipemp"]:checked')].map(x=>x.value);
    const targets=ids.length?ids:(a.employeeIds||[]);
    const share=targets.length?tip/targets.length:tip;
-   if(targets.length)targets.forEach(eid=>data.tips.push({id:uid(),appointmentId:a.id,employeeId:eid,amount:share,method:"Efectivo",date:document.getElementById("p_date").value}));
-   else data.tips.push({id:uid(),appointmentId:a.id,employeeId:"",amount:tip,method:"Efectivo",date:document.getElementById("p_date").value});
+   if(targets.length)targets.forEach(eid=>data.tips.push({id:uid(),appointmentId:a.id,employeeId:eid,amount:share,method:"Efectivo",date:paymentDate}));
+   else data.tips.push({id:uid(),appointmentId:a.id,employeeId:"",amount:tip,method:"Efectivo",date:paymentDate});
    data.cash.efectivo-=tip;
  }
  a.paymentStatus=apptDue(a.id)<=0?"paid":"partial";
