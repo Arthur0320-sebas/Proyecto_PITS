@@ -782,6 +782,64 @@ function pagosMove(days){const d=new Date(pagosDate+"T12:00:00");d.setDate(d.get
 function pagosToday(){pagosDate=TODAY();render("pagos")}
 function pagosSetDate(v){if(!v)return;pagosDate=v;render("pagos")}
 
+function openPayment(pre=""){
+ const pendingList=pending();
+ const dayList=data.appointments.filter(a=>a.date===pagosDate&&a.status!=="cancelled"&&!a.courtesy);
+ const list=pendingList.length?pendingList:dayList;
+ const selected=list.find(a=>a.id===pre)||list[0];
+ showModal("Registrar pago",selected?`<div class="form-grid">
+ <label class="wide">Servicio pendiente<select id="p_appt" onchange="paymentAmount()">${list.map(a=>`<option value="${a.id}" ${a.id===selected.id?'selected':''}>${esc(client(a.clientId)?.name||"Cliente")} · ${esc(a.serviceName||"Servicio")} · Debe ${money(apptDue(a.id))}</option>`).join("")}</select></label>
+ <label>Monto recibido<input id="p_amount" type="number" value="${apptDue(selected.id)}" oninput="updatePaymentTip()"></label>
+ <label>Forma de pago<select id="p_method"><option>Efectivo</option><option>Transferencia</option></select></label>
+ <label>Fecha<input id="p_date" type="date" value="${pagosDate}"></label> <div class="wide note">Saldo a favor disponible: <b>${money(clientCredit(selected.clientId))}</b>. Al registrar el pago, se utilizará primero para cubrir el servicio.</div>
+ <div class="wide payment-tip-box"><span>🎁 Propina detectada</span><b id="p_tip">$0</b><small>Si recibes más que el importe, la diferencia se registra como propina.</small></div>
+ <label class="wide">Propina para<div class="checks">${(selected.employeeIds||[]).map(id=>`<label class="check"><input type="checkbox" name="tipemp" value="${id}" checked> ${esc(employee(id)?.name||"Empleado")}</label>`).join("")||`<span class="muted">No hay empleado asignado a este servicio.</span>`}</div></label>
+ </div>
+ <div class="note">Ejemplo: servicio $180, recibes $200 → $180 se registra como ingreso del servicio y $20 como propina. La propina se paga en efectivo y se descuenta de Caja.</div>
+ <div class="modal-actions"><button class="btn red" onclick="savePayment()">Registrar pago</button></div>`:`<div class="empty">No hay cuentas pendientes de pago.</div>`);
+ updatePaymentTip();
+}
+function paymentAmount(){const a=appointment(document.getElementById("p_appt").value);document.getElementById("p_amount").value=apptDue(a.id);updatePaymentTip()}
+function updatePaymentTip(){
+ const a=appointment(document.getElementById("p_appt")?.value),amount=+(document.getElementById("p_amount")?.value||0),tip=Math.max(0,amount-(a?apptDue(a.id):0));
+ const el=document.getElementById("p_tip");if(el)el.textContent=money(tip);
+}
+function savePayment(){
+ const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
+ if(!a||amount<=0)return;
+ let remaining=amount;
+ const dueBefore=apptDue(a.id);
+ if(dueBefore<=0)return;
+
+ // Si el cliente tiene saldo a favor, se usa primero para cubrir este servicio.
+ const credit=clientCredit(a.clientId);
+ const useCredit=Math.min(credit,dueBefore,remaining);
+ if(useCredit>0){
+   const c=client(a.clientId);
+   c.creditBalance=Math.max(0,credit-useCredit);
+   data.creditTransactions.push({id:uid(),type:"apply",clientId:c.id,appointmentId:a.id,amount:useCredit,date:document.getElementById("p_date").value,note:"Aplicado al registrar pago"});
+   remaining-=useCredit;
+ }
+
+ // Solo el dinero realmente recibido hoy entra a efectivo/banco.
+ const serviceAmount=Math.min(remaining,Math.max(0,dueBefore-useCredit));
+ const tip=Math.max(0,remaining-Math.max(0,dueBefore-useCredit));
+ if(serviceAmount>0){
+   data.payments.push({id:uid(),appointmentId:a.id,clientId:a.clientId,amount:serviceAmount,method,date:document.getElementById("p_date").value});
+   if(method==="Efectivo")data.cash.efectivo+=serviceAmount;else data.cash.banco+=serviceAmount;
+ }
+ if(tip>0){
+   const ids=[...document.querySelectorAll('input[name="tipemp"]:checked')].map(x=>x.value);
+   const targets=ids.length?ids:(a.employeeIds||[]);
+   const share=targets.length?tip/targets.length:tip;
+   if(targets.length)targets.forEach(eid=>data.tips.push({id:uid(),appointmentId:a.id,employeeId:eid,amount:share,method:"Efectivo",date:document.getElementById("p_date").value}));
+   else data.tips.push({id:uid(),appointmentId:a.id,employeeId:"",amount:tip,method:"Efectivo",date:document.getElementById("p_date").value});
+   data.cash.efectivo-=tip;
+ }
+ a.paymentStatus=apptDue(a.id)<=0?"paid":"partial";
+ save();closeModal();render("pagos");
+}
+
 function gastos(){
  return `<div class="toolbar"><span>Gasolina · Refrescos · Productos · Otros</span><button class="btn red" onclick="openExpense()">+ Nuevo gasto</button></div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Monto</th><th>Método</th><th>Ticket</th></tr></thead><tbody>${data.expenses.map(e=>`<tr><td>${e.date}</td><td>${e.category}</td><td>${esc(e.description)}</td><td class="danger">${money(e.amount)}</td><td>${e.method}</td><td>${e.ticket?"📎":"—"}</td></tr>`).join("")||`<tr><td colspan="6" class="empty">No hay gastos.</td></tr>`}</tbody></table></div></div>`;
 }
