@@ -719,13 +719,43 @@ function clientes(){
  return `<div class="toolbar"><div><b>Clientes registrados</b><span class="muted">Todos aparecen aquí. No necesitas buscarlos.</span></div><button class="btn red" onclick="openClient()">+ Nuevo cliente</button></div>
  <div class="panel" id="clientList"></div>`;
 }
+function normalizeClientText(v){
+ return String(v||"").toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^a-z0-9]/g,"");
+}
+function possibleDuplicateClients(c){
+ const n=normalizeClientText(c.name), phone=normalizeClientText(c.phone), address=normalizeClientText(c.address);
+ return data.clients.some(x=>{
+   if(x.id===c.id)return false;
+   const xn=normalizeClientText(x.name), xp=normalizeClientText(x.phone), xa=normalizeClientText(x.address);
+   const sameName=n&&xn&&(n===xn||n.startsWith(xn)||xn.startsWith(n));
+   const sameContact=(phone&&xp&&phone===xp)||(address&&xa&&address===xa);
+   return sameName&&sameContact;
+ });
+}
+function editClient(id){openClient(id);}
+function deleteClient(id){
+ const c=client(id);
+ if(!c)return;
+ const aa=data.appointments.filter(a=>a.clientId===id);
+ const message=aa.length
+   ? `El cliente "${c.name}" tiene ${aa.length} cita(s) e historial asociado.\\n\\nPara no borrar tus datos de citas/pagos, primero edita o conserva el cliente y elimina solo si estás seguro.\\n\\n¿Quieres eliminarlo de todos modos?`
+   : `¿Eliminar al cliente "${c.name}"?`;
+ if(!confirm(message))return;
+ if(aa.length){
+   alert("No se eliminó porque tiene citas o historial. Así evitamos perder datos.");
+   return;
+ }
+ data.clients=data.clients.filter(x=>x.id!==id);
+ save();closeModal();render("clientes");renderClientList();
+}
 function renderClientList(){
  const el=document.getElementById("clientList");if(!el)return;
- el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th></tr></thead><tbody>${[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'})).map(c=>{
+ el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th><th>Acciones</th></tr></thead><tbody>${[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'})).map(c=>{
   const aa=data.appointments.filter(a=>a.clientId===c.id).sort((x,y)=>(y.date+y.time).localeCompare(x.date+x.time));
   const pendingC=aa.reduce((s,a)=>s+apptDue(a.id),0);
   const last=aa[0];
-  return `<tr class="click" onclick="openClient('${c.id}')"><td><b class="link">${esc(c.name)}</b></td><td>${esc(c.address)}</td><td>${last?esc((last.vehicleType||"Por confirmar")+" "+(last.vehicleSize||"")):"—"}</td><td>${aa.filter(a=>a.status==="completed").length}</td><td class="${pendingC?'danger':''}">${money(pendingC)}</td></tr>`;
+  const duplicate=possibleDuplicateClients(c);
+  return `<tr><td class="click" onclick="openClient('${c.id}')"><b class="link">${esc(c.name)}</b>${duplicate?`<div class="muted danger">⚠️ Posible duplicado</div>`:""}</td><td class="click" onclick="openClient('${c.id}')">${esc(c.address)}</td><td>${last?esc((last.vehicleType||"Por confirmar")+" "+(last.vehicleSize||"")):"—"}</td><td>${aa.filter(a=>a.status==="completed").length}</td><td class="${pendingC?'danger':''}">${money(pendingC)}</td><td><button class="mini" onclick="event.stopPropagation();editClient('${c.id}')">Editar</button> <button class="mini redtxt" onclick="event.stopPropagation();deleteClient('${c.id}')">Eliminar</button></td></tr>`;
  }).join("")}</tbody></table></div>`;
 }
 function openClient(id){
@@ -739,13 +769,23 @@ function openClient(id){
  <div class="modal-actions client-tools"><button class="mini" onclick="downloadClientPDF('${id}')">⬇ Descargar PDF</button><button class="mini" onclick="printClientSummary('${id}')">🖨 Imprimir resumen</button><button class="btn green" onclick="openAddCredit('${id}')">+ Agregar saldo a favor</button> <button class="mini" onclick="closeModal();render(&quot;saldos&quot;)">Ver saldos a favor</button></div>
  <h3>Historial de carros</h3><div class="history">${aa.map(a=>{const due=apptDue(a.id),pays=data.payments.filter(p=>p.appointmentId===a.id),used=apptCreditApplied(a.id);return `<div class="history-item"><div><b>${a.date} ${a.time||""}</b><small>${esc(a.vehicleType||"Vehículo por confirmar")} ${esc(a.vehicleSize||"")} · ${esc(a.serviceName||"Servicio por definir")}</small></div><strong>${a.courtesy?"Cortesía":money(a.total)}</strong><span>${pays.map(p=>`${p.method} ${money(p.amount)}`).join("<br>")||"Sin pago"}${used?`<br>Saldo a favor ${money(used)}`:""}</span><span class="pill ${due?'pending':'paid'}">${due?`Pendiente ${money(due)}`:"Pagado"}</span>${due?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:`<span class="muted">✓</span>`}</div>`}).join("")||`<div class="empty">Sin historial.</div>`}</div>
  <h3>Movimientos de saldo a favor</h3><div class="credit-history">${creditHistory(id)}</div>`:""}
- <div class="modal-actions"><button class="btn red" onclick="saveClient('${id||""}')">Guardar</button></div>`);
+ <div class="modal-actions"><button class="btn red" onclick="saveClient('${id||""}')">Guardar</button>${id?`<button class="mini redtxt" onclick="deleteClient('${id}')">🗑 Eliminar cliente</button>`:""}</div>`);
 }
 function saveClient(id){
  const name=document.getElementById("c_name").value.trim(),address=document.getElementById("c_address").value.trim(),phone=document.getElementById("c_phone").value.trim();
  if(!name)return alert("Escribe el nombre del cliente.");
  const dup=data.clients.find(c=>c.name.trim().toLowerCase()===name.toLowerCase()&&c.id!==id);
  if(dup)return alert(`⚠️ Este cliente ya existe: ${dup.name}.\\nDirección: ${dup.address}`);
+ const similar=data.clients.find(c=>{
+   if(c.id===id)return false;
+   const n=normalizeClientText(name), cn=normalizeClientText(c.name);
+   const p=normalizeClientText(phone), cp=normalizeClientText(c.phone);
+   const ad=normalizeClientText(address), cad=normalizeClientText(c.address);
+   const similarName=n&&cn&&(n===cn||n.startsWith(cn)||cn.startsWith(n));
+   const sameContact=(p&&cp&&p===cp)||(ad&&cad&&ad===cad);
+   return similarName&&sameContact;
+ });
+ if(similar&&!confirm(`⚠️ Posible cliente repetido: ${similar.name}.\\n\\nNombre: ${name}\\nDirección: ${address||"Sin dirección"}\\n\\n¿Guardar de todos modos?`))return;
  if(id)Object.assign(client(id),{name,address,phone});else data.clients.push({id:uid(),name,address,phone});
  save();closeModal();render("clientes");renderClientList();
 }
@@ -783,7 +823,8 @@ function pagos(){
   <div class="payment-summary"><span>💵 Efectivo <b>${money(cash)}</b></span><span>🏦 Transferencia <b>${money(bank)}</b></span><span>🎁 Propinas <b>${money(tips)}</b></span></div>
   <div class="table-wrap"><table><thead><tr><th>Hora</th><th>Cliente</th><th>Servicio</th><th>Importe</th><th>Pagado ese día</th><th>Forma</th><th>Propina</th><th>Estado</th><th></th></tr></thead><tbody>${rows.map(a=>{
    const dueA=apptDue(a.id),pays=paymentsDay.filter(p=>p.appointmentId===a.id),c=client(a.clientId),atips=data.tips.filter(t=>t.appointmentId===a.id&&tipBelongsToDate(t,d)).reduce((s,t)=>s+(+t.amount||0),0),paidDay=pays.reduce((s,p)=>s+(+p.amount||0),0);
-   return `<tr><td>${esc(a.time||"—")}</td><td><b>${esc(c?.name||"")}</b></td><td>${esc(a.serviceName)}</td><td>${a.courtesy?"$0 (Cortesía)":money(a.total)}</td><td>${money(paidDay)}</td><td>${a.courtesy?"Cortesía":pays.map(p=>p.method).join(" + ")||"—"}</td><td>${atips?money(atips):"—"}</td><td><span class="pill ${a.courtesy?"paid":dueA?"pending":"paid"}">${a.courtesy?"Cortesía":dueA?`Pendiente ${money(dueA)}`:"Pagado"}</span></td><td>${dueA&&!a.courtesy?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:"✓"}</td></tr>`;
+   const methodButtons=a.courtesy?"Cortesía":(pays.map(p=>`<span>${p.method} <button type="button" class="mini" onclick="editPayment('${p.id}')">Editar</button></span>`).join("<br>")||"—");
+   return `<tr><td>${esc(a.time||"—")}</td><td><b>${esc(c?.name||"")}</b></td><td>${esc(a.serviceName)}</td><td>${a.courtesy?"$0 (Cortesía)":money(a.total)}</td><td>${money(paidDay)}</td><td>${methodButtons}</td><td>${atips?money(atips):"—"}</td><td><span class="pill ${a.courtesy?"paid":dueA?"pending":"paid"}">${a.courtesy?"Cortesía":dueA?`Pendiente ${money(dueA)}`:"Pagado"}</span></td><td>${dueA&&!a.courtesy?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:"✓"}</td></tr>`;
   }).join("")||`<tr><td colspan="9" class="empty">No hay servicios con importe en este día.</td></tr>`}</tbody></table></div></div>`;
 }
 function pagosMove(days){const d=new Date(pagosDate+"T12:00:00");d.setDate(d.getDate()+days);pagosDate=d.toISOString().slice(0,10);render("pagos")}
@@ -810,6 +851,31 @@ function openPayment(pre=""){
  <div class="note">Ejemplo: servicio $180, recibes $200 → $180 se registra como ingreso del servicio y $20 como propina. La propina se paga en efectivo y se descuenta de Caja.</div>
  <div class="modal-actions"><button class="btn red" onclick="savePayment()">Registrar pago</button></div>`:`<div class="empty">No hay cuentas pendientes de pago.</div>`);
  updatePaymentTip();
+}
+function editPayment(id){
+ const p=data.payments.find(x=>x.id===id);
+ if(!p)return;
+ const a=appointment(p.appointmentId);
+ const c=client(p.clientId||a?.clientId);
+ showModal("Editar pago",`<div class="form-grid">
+   <div class="wide note"><b>${esc(c?.name||"Cliente")}</b> · ${esc(a?.serviceName||"Servicio")} · ${money(p.amount)}</div>
+   <label>Forma de pago<select id="edit_p_method"><option ${p.method==="Efectivo"?"selected":""}>Efectivo</option><option ${p.method==="Transferencia"?"selected":""}>Transferencia</option></select></label>
+ </div>
+ <div class="note">Puedes corregir la forma de pago sin volver a crear la cita ni registrar nuevamente el cobro.</div>
+ <div class="modal-actions"><button class="btn red" onclick="saveEditedPayment('${p.id}')">Guardar cambio</button></div>`);
+}
+function saveEditedPayment(id){
+ const p=data.payments.find(x=>x.id===id);
+ if(!p)return;
+ const next=document.getElementById("edit_p_method")?.value;
+ if(!next||next===p.method){closeModal();return;}
+ const amount=+p.amount||0;
+ if(p.method==="Efectivo")data.cash.efectivo=Math.max(0,(+data.cash.efectivo||0)-amount);
+ if(p.method==="Transferencia")data.cash.banco=Math.max(0,(+data.cash.banco||0)-amount);
+ if(next==="Efectivo")data.cash.efectivo=(+data.cash.efectivo||0)+amount;
+ if(next==="Transferencia")data.cash.banco=(+data.cash.banco||0)+amount;
+ p.method=next;
+ save();closeModal();render("pagos");
 }
 function paymentAmount(){const a=appointment(document.getElementById("p_appt").value);document.getElementById("p_amount").value=apptDue(a.id);updatePaymentTip()}
 function updatePaymentTip(){
