@@ -110,50 +110,39 @@ const defaultData={
  ],
 };
 let remoteReady=false;
-let remoteLoading=true;
-let remoteSyncing=false;
 let storedData=null;
 let localDirty=false;
-try{
-  storedData=JSON.parse(localStorage.getItem(KEY)||"null");
-  localDirty=localStorage.getItem(KEY+"_dirty")==="1";
-}catch(e){
-  storedData=null;
-  localDirty=false;
-}
-
-// La copia local se conserva como respaldo mientras se obtiene PostgreSQL.
+const DIRTY_KEY=KEY+"_dirty";
+try{storedData=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){storedData=null}
+try{localDirty=localStorage.getItem(DIRTY_KEY)==="1"}catch(e){localDirty=false}
 let data=storedData || structuredClone(window.PITS_SEED_DATA || defaultData);
 data.clients??=[]; data.employees??=[]; data.appointments??=[]; data.payments??=[]; data.expenses??=[]; data.employeePayments??=[]; data.tips??=[]; data.closings??=[]; data.cash??={efectivo:0,banco:0};
+data.creditTransactions??=[]; data.recurring??=[]; data.clients.forEach(c=>{c.creditBalance=+(c.creditBalance||0)});
+data.employees.length||(data.employees=structuredClone(defaultData.employees));
 data.services=structuredClone(defaultData.services);
 data.appointments.forEach(a=>{a.employeeIds??=[];a.status??="scheduled";a.paymentStatus??="pending";a.commissions??=[];a.courtesy??=false;});
 materializeRecurring();
 
 let saveQueue=Promise.resolve();
-let retryTimer=null;
+let saveVersion=0;
+let lastRemoteVersion=0;
 
-function markLocalSaved(dirty=true){
+function markLocalDirty(){
+  localDirty=true;
+  try{localStorage.setItem(DIRTY_KEY,"1")}catch(e){}
+}
+function clearLocalDirty(){
+  localDirty=false;
+  try{localStorage.removeItem(DIRTY_KEY)}catch(e){}
+}
+function save(){
   localStorage.setItem(KEY,JSON.stringify(data));
-  if(dirty) localStorage.setItem(KEY+"_dirty","1");
+  markLocalDirty();
+  const version=++saveVersion;
+  if(remoteReady) syncRemote(version);
 }
-
-function markRemoteSaved(){
-  localStorage.removeItem(KEY+"_dirty");
-}
-
-function scheduleRemoteRetry(){
-  if(retryTimer||!remoteReady)return;
-  retryTimer=setTimeout(()=>{
-    retryTimer=null;
-    if(localStorage.getItem(KEY+"_dirty")==="1") syncLocalToRemote();
-  },5000);
-}
-
-function syncLocalToRemote(){
-  if(!remoteReady)return;
+function syncRemote(version){
   const payload=JSON.stringify(data);
-  localStorage.setItem(KEY+"_dirty","1");
-  remoteSyncing=true;
   saveQueue=saveQueue.then(async()=>{
     const r=await fetch("/api/state",{
       method:"PUT",
@@ -161,82 +150,51 @@ function syncLocalToRemote(){
       body:payload,
       keepalive:true
     });
-    let result=null;
-    try{result=await r.json()}catch(e){}
+    const result=await r.json().catch(()=>null);
     if(!r.ok || !result || result.ok!==true){
-      throw new Error((result&&result.error)||("HTTP "+r.status));
+      throw new Error("No se pudo guardar en el servidor (HTTP "+r.status+")");
     }
-    // Solo marcamos todo como sincronizado si no hubo cambios nuevos
-    // mientras esta petición estaba en curso.
-    if(JSON.stringify(data)===payload){
-      markRemoteSaved();
-    } else {
-      localStorage.setItem(KEY+"_dirty","1");
-    }
+    lastRemoteVersion=version;
+    if(version===saveVersion) clearLocalDirty();
   }).catch(e=>{
-    console.warn("No se pudo sincronizar con PostgreSQL. La copia local se conserva:",e);
-    scheduleRemoteRetry();
-  }).finally(()=>{
-    remoteSyncing=false;
+    console.warn("No se pudo sincronizar en este momento:",e);
   });
 }
-
-function save(){
-  // Siempre se guarda primero en el navegador.
-  markLocalSaved(true);
-
-  // Después se sincroniza con PostgreSQL cuando la conexión ya fue validada.
-  if(remoteReady) syncLocalToRemote();
-}
-
 async function loadSharedData(){
-  try {
-    const r=await fetch("/api/state",{cache:"no-store"});
+  try{
+    const r=await fetch("/api/state");
     if(!r.ok) throw new Error("Servidor no disponible (HTTP "+r.status+")");
-
     const remote=await r.json();
-    if(!remote || remote.ok!==true){
-      throw new Error((remote&&remote.error)||"Respuesta inválida del servidor");
+    if(!remote || remote.ok!==true) throw new Error("Respuesta inválida del servidor");
+
+    if(remote.data && typeof remote.data==="object"){
+      if(localDirty){
+        // Hay cambios locales pendientes: NO sobrescribirlos con datos viejos.
+        remoteReady=true;
+        const version=++saveVersion;
+        syncRemote(version);
+      }else{
+        data=remote.data;
+        localStorage.setItem(KEY,JSON.stringify(data));
+        clearLocalDirty();
+        remoteReady=true;
+      }
+    }else{
+      // La base está vacía. Solo aquí se suben los datos locales existentes.
+      remoteReady=true;
+      const version=++saveVersion;
+      syncRemote(version);
     }
 
-    remoteReady=true;
-
-    // Si quedaron cambios locales sin sincronizar, NO los reemplazamos
-    // con una copia potencialmente anterior de PostgreSQL.
-    if(localDirty){
-      console.warn("⚠️ Hay cambios locales pendientes. Se conservarán y se enviarán a PostgreSQL.");
-      syncLocalToRemote();
-    } else if(
-      remote.data &&
-      typeof remote.data==="object" &&
-      !Array.isArray(remote.data) &&
-      (Array.isArray(remote.data.clients) || Array.isArray(remote.data.appointments) || Array.isArray(remote.data.payments))
-    ){
-      // PostgreSQL tiene datos válidos: son la fuente principal.
-      data=remote.data;
-      data.clients??=[]; data.employees??=[]; data.appointments??=[]; data.payments??=[]; data.expenses??=[]; data.employeePayments??=[]; data.tips??=[]; data.closings??=[]; data.cash??={efectivo:0,banco:0};
-      data.services=structuredClone(defaultData.services);
-      data.appointments.forEach(a=>{a.employeeIds??=[];a.status??="scheduled";a.paymentStatus??="pending";a.commissions??=[];a.courtesy??=false;});
-      materializeRecurring();
-      localStorage.setItem(KEY,JSON.stringify(data));
-      markRemoteSaved();
-    } else {
-      // PostgreSQL está vacío o no contiene un estado válido.
-      // Se conserva la copia local y se sube a PostgreSQL.
-      markLocalSaved(true);
-      syncLocalToRemote();
-    }
-
-    remoteLoading=false;
     render();
-
-  } catch(e){
-    console.warn("⚠️ PostgreSQL no disponible. Se conserva la copia local:",e);
+  }catch(e){
+    console.warn("No se pudo cargar PostgreSQL; se conservan los datos locales:",e);
+    // MUY IMPORTANTE: no activar sincronización remota si el GET falló.
     remoteReady=false;
-    remoteLoading=false;
     render();
   }
 }
+
 function esc(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 function client(id){return data.clients.find(c=>c.id===id)}
 function appointment(id){return data.appointments.find(a=>a.id===id)}
