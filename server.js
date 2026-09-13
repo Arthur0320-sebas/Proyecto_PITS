@@ -1,15 +1,16 @@
 require('dotenv').config();
 
 const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
 
 const app = express();
-app.use(express.json({ limit: '10mb' }));
 
 const PORT = process.env.PORT || 3000;
-const STATE_FILE = path.join(__dirname, 'data', 'state.json');
+
+// ==========================================
+// CONFIGURACIÓN
+// ==========================================
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(__dirname));
@@ -19,18 +20,15 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false
   },
-  connectionTimeoutMillis: 30000
+  connectionTimeoutMillis: 30000,
+  idleTimeoutMillis: 30000
 });
 
-pool.connect()
-  .then(client => {
-    console.log('✅ BASE DE DATOS POSTGRESQL CONECTADA CORRECTAMENTE');
-    client.release();
-  })
-  .catch(error => {
-    console.error('❌ ERROR AL CONECTAR A POSTGRESQL:', error.message);
-});
-async function crearTabla() {
+// ==========================================
+// CONEXIÓN Y TABLA
+// ==========================================
+
+async function iniciarBaseDeDatos() {
   try {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS app_state (
@@ -40,48 +38,48 @@ async function crearTabla() {
       );
     `);
 
+    console.log('✅ BASE DE DATOS POSTGRESQL CONECTADA');
     console.log('✅ TABLA app_state LISTA');
+
+    return true;
+
   } catch (error) {
-    console.error('❌ ERROR AL CREAR TABLA:', error.message);
+
+    console.error('❌ ERROR AL INICIAR POSTGRESQL:');
+    console.error(error.message);
+
+    return false;
   }
 }
 
-crearTabla();
-
 // ==========================================
-// LEER DATOS
+// LEER DATOS DE POSTGRESQL
 // ==========================================
 
 async function readState() {
 
-  try {
+  const result = await pool.query(`
+    SELECT data
+    FROM app_state
+    WHERE id = 1
+  `);
 
-    const result = await pool.query(`
-      SELECT data
-      FROM app_state
-      WHERE id = 1
-    `);
-
-    if (result.rows.length > 0) {
-      return result.rows[0].data;
-    }
-
-    return null;
-
-  } catch (error) {
-
-    console.error('Error al leer PostgreSQL:', error);
-
-    return null;
-
+  if (result.rows.length > 0) {
+    return result.rows[0].data;
   }
+
+  return null;
 }
 
 // ==========================================
-// GUARDAR DATOS
+// GUARDAR DATOS EN POSTGRESQL
 // ==========================================
 
 async function writeState(data) {
+
+  if (!data || typeof data !== 'object') {
+    throw new Error('Los datos recibidos no son válidos');
+  }
 
   await pool.query(`
     INSERT INTO app_state (
@@ -91,7 +89,7 @@ async function writeState(data) {
     )
     VALUES (
       1,
-      $1,
+      $1::jsonb,
       CURRENT_TIMESTAMP
     )
 
@@ -99,41 +97,107 @@ async function writeState(data) {
     DO UPDATE SET
       data = EXCLUDED.data,
       updated_at = CURRENT_TIMESTAMP
-  `, [data]);
+  `, [JSON.stringify(data)]);
 
 }
 
+// ==========================================
+// API — OBTENER TODOS LOS DATOS
+// ==========================================
 
-// ==========================================
-// OBTENER TODOS LOS DATOS
-// ==========================================
 app.get('/api/state', async (req, res) => {
+
   try {
+
     const data = await readState();
+
+    console.log(
+      data
+        ? '📥 Datos cargados desde PostgreSQL'
+        : '📭 PostgreSQL todavía no tiene datos'
+    );
 
     res.json({
       ok: true,
-      data
+      data: data
     });
 
   } catch (error) {
 
-    console.error('Error al obtener datos:', error);
+    console.error('❌ ERROR AL LEER POSTGRESQL:');
+    console.error(error);
+
+    // IMPORTANTE:
+    // Si PostgreSQL falla, NO enviamos ok:true
+    // para evitar que el frontend crea que recibió datos válidos.
 
     res.status(500).json({
       ok: false,
-      error: error.message
+      error: 'No se pudieron cargar los datos desde PostgreSQL'
     });
 
   }
+
 });
+
+// ==========================================
+// API — GUARDAR TODOS LOS DATOS
+// ==========================================
+
+app.put('/api/state', async (req, res) => {
+
+  try {
+
+    if (
+      !req.body ||
+      typeof req.body !== 'object' ||
+      Array.isArray(req.body)
+    ) {
+
+      return res.status(400).json({
+        ok: false,
+        error: 'Datos inválidos'
+      });
+
+    }
+
+    await writeState(req.body);
+
+    console.log('💾 DATOS GUARDADOS CORRECTAMENTE EN POSTGRESQL');
+
+    res.json({
+      ok: true,
+      savedAt: new Date().toISOString(),
+      mensaje: 'Datos guardados correctamente'
+    });
+
+  } catch (error) {
+
+    console.error('❌ ERROR AL GUARDAR EN POSTGRESQL:');
+    console.error(error);
+
+    res.status(500).json({
+      ok: false,
+      error: 'No se pudieron guardar los datos en PostgreSQL',
+      detalle: error.message
+    });
+
+  }
+
+});
+
+// ==========================================
+// PRUEBA DE BASE DE DATOS
+// ==========================================
+
 app.get('/api/test-db', async (req, res) => {
 
   try {
 
     const result = await pool.query(`
-      SELECT NOW() AS fecha,
-      current_database() AS base_de_datos
+      SELECT
+        NOW() AS fecha,
+        current_database() AS base_de_datos
     `);
 
     res.json({
@@ -144,55 +208,13 @@ app.get('/api/test-db', async (req, res) => {
 
   } catch (error) {
 
-    console.error('ERROR COMPLETO POSTGRESQL:');
+    console.error('❌ ERROR COMPLETO POSTGRESQL:');
     console.error(error);
 
     res.status(500).json({
       ok: false,
       mensaje: error.message,
       codigo: error.code
-    });
-
-  }
-
-});
-
-
-// ==========================================
-// GUARDAR TODOS LOS DATOS
-// ==========================================
-
-app.put('/api/state', async (req, res) => {
-
-  try {
-
-    if (
-      !req.body ||
-      typeof req.body !== 'object'
-    ) {
-
-      return res.status(400).json({
-        error: 'Datos inválidos'
-      });
-
-    }
-
-    await writeState(req.body);
-
-    console.log('Datos guardados correctamente');
-
-    res.json({
-      ok: true,
-      savedAt: new Date().toISOString(),
-      mensaje: 'Datos guardados correctamente'
-    });
-
-  } catch (error) {
-
-    console.error('Error al guardar:', error);
-
-    res.status(500).json({
-      error: 'No se pudieron guardar los datos'
     });
 
   }
@@ -211,15 +233,31 @@ app.get('*', (req, res) => {
 
 });
 
-
 // ==========================================
 // INICIAR SERVIDOR
 // ==========================================
 
-app.listen(PORT, () => {
+async function iniciarServidor() {
 
-  console.log(
-    `Pits Admin listo en http://localhost:${PORT}`
-  );
+  const dbOk = await iniciarBaseDeDatos();
 
-});
+  if (!dbOk) {
+
+    console.error(
+      '⚠️ El servidor no se iniciará porque PostgreSQL no está disponible.'
+    );
+
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+
+    console.log(
+      `🚗 Pits Admin listo en el puerto ${PORT}`
+    );
+
+  });
+
+}
+
+iniciarServidor();
