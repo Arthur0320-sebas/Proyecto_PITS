@@ -13,7 +13,7 @@
     <button class="nav active" data-view="dashboard">▦ Dashboard</button>
     <button class="nav" data-view="agenda">▣ Agenda</button>
     <button class="nav" data-view="clientes">♙ Clientes</button>
-    <button class="nav" data-view="saldos">💰 Saldos a favor</button>
+    <button class="nav" data-view="cxcs">💰 C x C</button>
     <button class="nav" data-view="servicios">🚗 Servicios</button>
     <button class="nav" data-view="pagos">💳 Pagos</button>
     <button class="nav" data-view="gastos">▤ Gastos</button>
@@ -295,13 +295,12 @@ function deleteCredit(id){
 
 function makeClientPdfText(clientId){
  const c=client(clientId); if(!c)return [];
- const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled").sort((x,y)=>(x.date+x.time).localeCompare(y.date+y.time));
- const debt=aa.reduce((s,a)=>s+apptDue(a.id),0), credit=clientCredit(clientId);
- const lines=["AUTOLAVADO PITS","RESUMEN DE CUENTA","",`Cliente: ${c.name}`,`Direccion: ${c.address||"-"}`,`Telefono: ${c.phone||"-"}`,"",`TOTAL PENDIENTE: ${money(debt)}`,`SALDO A FAVOR: ${money(credit)}`,"","DETALLE DE SERVICIOS"];
- aa.forEach(a=>{const pays=data.payments.filter(p=>p.appointmentId===a.id);const methods=pays.map(p=>p.method).join(" + ")||"Sin pago";lines.push(`${a.date} | ${a.vehicleType||"Vehiculo"} ${a.vehicleSize||""} | ${a.serviceName||"Servicio"} | ${money(a.total)} | ${methods} | ${apptDue(a.id)>0?"Debe "+money(apptDue(a.id)):"Pagado"}`)});
- if(!aa.length)lines.push("Sin servicios registrados.");
- return lines.map(s=>String(s).normalize("NFD").replace(/[\\u0300-\\u036f]/g,"").replace(/[^\\x20-\\x7E]/g,""));
+ const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled");
+ const debt=aa.reduce((s,a)=>s+apptDue(a.id),0);
+ const lines=["AUTOLAVADO PITS","CUENTA POR COBRAR","",`Cliente: ${c.name}`,`Direccion: ${c.address||"-"}`,`Telefono: ${c.phone||"-"}`,"",`TOTAL PENDIENTE: ${money(debt)}`];
+ return lines.map(s=>String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\x20-\x7E]/g,""));
 }
+
 function downloadClientPDF(clientId){
  const lines=makeClientPdfText(clientId), escPdf=s=>s.replace(/([\\()])/g,"\\$1");
  const chunks=[]; let y=760;
@@ -321,36 +320,41 @@ function downloadClientPDF(clientId){
 }
 function printClientSummary(clientId){
  const c=client(clientId);if(!c)return;
- const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled").sort((x,y)=>(x.date+x.time).localeCompare(y.date+y.time));
- const debt=aa.reduce((s,a)=>s+apptDue(a.id),0),credit=clientCredit(clientId);
- const rows=aa.map(a=>{
-  const pays=data.payments.filter(p=>p.appointmentId===a.id);
-  const methods=pays.map(p=>`${esc(p.method)} ${money(p.amount)}`).join(" · ")||"Sin pago";
-  const used=apptCreditApplied(a.id),due=apptDue(a.id);
-  return `<tr><td>${esc(a.date||"")}</td><td>${esc(((a.vehicleType||"")+" "+(a.vehicleSize||"")).trim()||"Por confirmar")}</td><td>${esc(a.serviceName||"Servicio por definir")}${a.courtesy?" · Cortesía":""}</td><td>${money(a.total||0)}</td><td>${methods}${used?`<br>Saldo a favor: -${money(used)}`:""}</td><td class="${due?'debt':'paid'}">${due?`Debe ${money(due)}`:"Pagado"}</td></tr>`;
- }).join("");
+ const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled");
+ const debt=aa.reduce((s,a)=>s+apptDue(a.id),0);
  const w=window.open("","_blank");
- if(!w){alert("Permite ventanas emergentes para imprimir el resumen.");return;}
+ if(!w){alert("Permite ventanas emergentes para imprimir la cuenta.");return;}
  w.document.open();
- w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Resumen de cuenta - ${esc(c.name)}</title>
- <style>body{font-family:Arial,Helvetica,sans-serif;padding:32px;color:#20262b}h1{margin:0;color:#d71920;font-size:25px}h2{margin:6px 0 22px;font-size:18px}.meta{line-height:1.65;margin-bottom:18px}.summary{display:flex;gap:12px;margin:18px 0}.box{border:1px solid #ddd;border-radius:8px;padding:14px;flex:1}.box span{font-size:12px;color:#666}.box b{display:block;font-size:21px;margin-top:5px}.debt{color:#d71920}.credit,.paid{color:#168548}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}th{background:#f2f3f4}@media print{body{padding:10px}.no-print{display:none}}</style></head><body>
- <h1>Autolavado Pits</h1><h2>Resumen de cuenta del cliente</h2>
+ w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cuenta por cobrar - ${esc(c.name)}</title>
+ <style>body{font-family:Arial,Helvetica,sans-serif;padding:32px;color:#20262b}h1{margin:0;color:#d71920;font-size:25px}h2{margin:6px 0 22px;font-size:18px}.meta{line-height:1.65;margin-bottom:25px}.box{border:1px solid #ddd;border-radius:10px;padding:22px;max-width:420px}.box span{font-size:13px;color:#666}.box b{display:block;font-size:32px;margin-top:8px}.debt{color:#d71920}@media print{body{padding:10px}}</style></head><body>
+ <h1>Autolavado Pits</h1><h2>Cuenta por cobrar</h2>
  <div class="meta"><b>Cliente:</b> ${esc(c.name)}<br><b>Dirección:</b> ${esc(c.address||"-")}<br><b>Teléfono:</b> ${esc(c.phone||"-")}</div>
- <div class="summary"><div class="box"><span>Total pendiente</span><b class="debt">${money(debt)}</b></div><div class="box"><span>Saldo a favor</span><b class="credit">${money(credit)}</b></div></div>
- <h3>Detalle de servicios</h3><table><thead><tr><th>Fecha</th><th>Vehículo</th><th>Servicio</th><th>Importe</th><th>Pagos</th><th>Estado</th></tr></thead><tbody>${rows||`<tr><td colspan="6">Sin servicios registrados.</td></tr>`}</tbody></table>
- <p class="no-print" style="margin-top:20px;color:#666">Este resumen incluye deuda, saldo a favor, servicios y pagos. Para enviarlo como PDF, selecciona Guardar como PDF en la ventana de impresión.</p>
+ <div class="box"><span>Total pendiente</span><b class="debt">${money(debt)}</b></div>
+ <p style="margin-top:25px;color:#666">Este ticket muestra únicamente el saldo pendiente actual del cliente.</p>
  <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`);
  w.document.close();
 }
-function saldos(){
- const rows=[...data.clients].filter(c=>clientCredit(c.id)>0).sort((a,b)=>a.name.localeCompare(b.name,"es",{sensitivity:"base"}));
- return `<div class="toolbar"><div><b>Saldos a favor</b><span class="muted">Solo aparecen clientes con saldo a favor.</span></div></div>
- <div class="panel"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Saldo a favor</th><th></th></tr></thead><tbody>
- ${rows.map(c=>`<tr><td><b class="link">${esc(c.name)}</b><small>${esc(c.address||"")}</small></td><td class="success"><b>${money(clientCredit(c.id))}</b></td><td><button class="mini redtxt" onclick="openAddCredit('${c.id}')">+ Agregar saldo</button> <button class="mini" onclick="openClient('${c.id}')">Ver cliente</button></td></tr>`).join("")||`<tr><td colspan="3" class="empty">No hay clientes con saldo a favor.</td></tr>`}
+
+function cxcs(){
+ const rows=[...data.clients].map(c=>{
+  const debt=data.appointments.filter(a=>a.clientId===c.id&&a.status!=="cancelled").reduce((s,a)=>s+apptDue(a.id),0);
+  return {...c,debt};
+ }).filter(c=>c.debt>0).sort((a,b)=>a.name.localeCompare(b.name,"es",{sensitivity:"base"}));
+ const total=rows.reduce((s,c)=>s+c.debt,0);
+ return `<div class="toolbar"><div><b>💰 C x C</b><span class="muted">Cuentas por cobrar · clientes con saldo pendiente.</span></div><div><b class="danger">${money(total)}</b><span class="muted"> por cobrar</span></div></div>
+ <div class="panel"><div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Debe</th><th></th></tr></thead><tbody>
+ ${rows.map(c=>`<tr class="click" onclick="openClient('${c.id}')"><td><b class="link">${esc(c.name)}</b><small>${esc(c.address||"")}</small></td><td class="danger"><b>${money(c.debt)}</b></td><td><button class="mini redtxt" onclick="event.stopPropagation();openPaymentForClient('${c.id}')">Registrar pago</button></td></tr>`).join("")||`<tr><td colspan="3" class="empty">No hay clientes con saldo pendiente.</td></tr>`}
  </tbody></table></div></div>`;
 }
+function openPaymentForClient(clientId){
+ const c=client(clientId); if(!c)return;
+ const pendingList=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled"&&apptDue(a.id)>0).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+ if(!pendingList.length)return alert("Este cliente no tiene saldo pendiente.");
+ openPayment(pendingList[0].id);
+}
+
 function render(view="dashboard"){
- const titles={dashboard:"Dashboard",agenda:"Agenda",clientes:"Clientes",saldos:"Saldos a favor",servicios:"Servicios",pagos:"Pagos",gastos:"Gastos",empleados:"Empleados y comisiones",caja:"Caja",reportes:"Reportes"};
+ const titles={dashboard:"Dashboard",agenda:"Agenda",clientes:"Clientes",cxcs:"C x C",servicios:"Servicios",pagos:"Pagos",gastos:"Gastos",empleados:"Empleados y comisiones",caja:"Caja",reportes:"Reportes"};
  document.querySelectorAll(".nav").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
  document.getElementById("title").textContent=titles[view];
 
@@ -381,7 +385,7 @@ function render(view="dashboard"){
   });
  }
 
- document.getElementById("content").innerHTML={dashboard,agenda,clientes,saldos,servicios,pagos,gastos,empleados,caja,reportes}[view]();
+ document.getElementById("content").innerHTML={dashboard,agenda,clientes,cxcs,servicios,pagos,gastos,empleados,caja,reportes}[view]();
 }
 document.querySelectorAll(".nav").forEach(b=>b.onclick=()=>render(b.dataset.view));
 
@@ -750,12 +754,12 @@ function deleteClient(id){
 }
 function renderClientList(){
  const el=document.getElementById("clientList");if(!el)return;
- el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th><th>Acciones</th></tr></thead><tbody>${[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'})).map(c=>{
+ el.innerHTML=`<div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Dirección</th><th>Último carro</th><th>Servicios</th><th>Pendiente</th></tr></thead><tbody>${[...data.clients].sort((a,b)=>a.name.localeCompare(b.name,'es',{sensitivity:'base'})).map(c=>{
   const aa=data.appointments.filter(a=>a.clientId===c.id).sort((x,y)=>(y.date+y.time).localeCompare(x.date+x.time));
   const pendingC=aa.reduce((s,a)=>s+apptDue(a.id),0);
   const last=aa[0];
   const duplicate=possibleDuplicateClients(c);
-  return `<tr><td class="click" onclick="openClient('${c.id}')"><b class="link">${esc(c.name)}</b>${duplicate?`<div class="muted danger">⚠️ Posible duplicado</div>`:""}</td><td class="click" onclick="openClient('${c.id}')">${esc(c.address)}</td><td>${last?esc((last.vehicleType||"Por confirmar")+" "+(last.vehicleSize||"")):"—"}</td><td>${aa.filter(a=>a.status==="completed").length}</td><td class="${pendingC?'danger':''}">${money(pendingC)}</td><td><button class="mini" onclick="event.stopPropagation();editClient('${c.id}')">Editar</button> <button class="mini redtxt" onclick="event.stopPropagation();deleteClient('${c.id}')">Eliminar</button></td></tr>`;
+  return `<tr class="click" onclick="openClient('${c.id}')"><td><b class="link">${esc(c.name)}</b>${duplicate?`<div class="muted danger">⚠️ Posible duplicado</div>`:""}</td><td>${esc(c.address)}</td><td>${last?esc((last.vehicleType||"Por confirmar")+" "+(last.vehicleSize||"")):"—"}</td><td>${aa.filter(a=>a.status==="completed").length}</td><td class="${pendingC?'danger':''}">${money(pendingC)}</td></tr>`;
  }).join("")}</tbody></table></div>`;
 }
 function openClient(id){
@@ -765,8 +769,8 @@ function openClient(id){
  showModal(id?"Cliente":"Nuevo cliente",`
  <div class="form-grid"><label>Nombre<input id="c_name" value="${esc(c.name)}"></label><label>Teléfono<input id="c_phone" value="${esc(c.phone||"")}"></label><label class="wide">Dirección<input id="c_address" value="${esc(c.address||"")}"></label></div>
  ${id?`<div class="client-summary"><b>${esc(c.name)}</b><span>${esc(c.address||"")}</span><button class="btn red" onclick="closeModal();newAppointment('${id}')">+ Agendar cita</button></div>
- <div class="client-finance"><div><small>Debe</small><b class="${debt?'danger':''}">${money(debt)}</b></div><div><small>Saldo a favor</small><b class="${clientCredit(id)?'success':''}">${money(clientCredit(id))}</b></div></div>
- <div class="modal-actions client-tools"><button class="mini" onclick="downloadClientPDF('${id}')">⬇ Descargar PDF</button><button class="mini" onclick="printClientSummary('${id}')">🖨 Imprimir resumen</button><button class="btn green" onclick="openAddCredit('${id}')">+ Agregar saldo a favor</button> <button class="mini" onclick="closeModal();render(&quot;saldos&quot;)">Ver saldos a favor</button></div>
+ <div class="client-finance"><div><small>Debe</small><b class="${debt?'danger':''}">${money(debt)}</b></div><div><small>Crédito disponible</small><b class="${clientCredit(id)?'success':''}">${money(clientCredit(id))}</b></div></div>
+ <div class="modal-actions client-tools"><button class="mini" onclick="downloadClientPDF('${id}')">⬇ Descargar PDF</button><button class="mini" onclick="printClientSummary('${id}')">🖨 Imprimir resumen</button><button class="btn green" onclick="openAddCredit('${id}')">+ Agregar crédito</button></div>
  <h3>Historial de carros</h3><div class="history">${aa.map(a=>{const due=apptDue(a.id),pays=data.payments.filter(p=>p.appointmentId===a.id),used=apptCreditApplied(a.id);return `<div class="history-item"><div><b>${a.date} ${a.time||""}</b><small>${esc(a.vehicleType||"Vehículo por confirmar")} ${esc(a.vehicleSize||"")} · ${esc(a.serviceName||"Servicio por definir")}</small></div><strong>${a.courtesy?"Cortesía":money(a.total)}</strong><span>${pays.map(p=>`${p.method} ${money(p.amount)}`).join("<br>")||"Sin pago"}${used?`<br>Saldo a favor ${money(used)}`:""}</span><span class="pill ${due?'pending':'paid'}">${due?`Pendiente ${money(due)}`:"Pagado"}</span>${due?`<button class="mini redtxt" onclick="openPayment('${a.id}')">Registrar pago</button>`:`<span class="muted">✓</span>`}</div>`}).join("")||`<div class="empty">Sin historial.</div>`}</div>
  <h3>Movimientos de saldo a favor</h3><div class="credit-history">${creditHistory(id)}</div>`:""}
  <div class="modal-actions"><button class="btn red" onclick="saveClient('${id||""}')">Guardar</button>${id?`<button class="mini redtxt" onclick="deleteClient('${id}')">🗑 Eliminar cliente</button>`:""}</div>`);
@@ -1009,11 +1013,11 @@ function downloadReport(type){
   const moneyXls=n=>Number(n||0).toLocaleString("es-MX",{minimumFractionDigits:2,maximumFractionDigits:2});
   let html=`<html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;color:#20262b}h1{font-size:22px}h2{font-size:16px;margin-top:22px}table{border-collapse:collapse;width:100%;margin-bottom:20px}th{background:#e9ecef;font-weight:bold}th,td{border:1px solid #cfd4d8;padding:7px;text-align:left}td.num{text-align:right}.total{font-weight:bold;background:#f5f5f5}.sub{color:#666}</style></head><body><h1>Autolavado Pits</h1>`;
   if(type==="daily"){
-    const paymentsDay=data.payments.filter(p=>p.date===date);
+    const paymentsDay=data.payments.filter(p=>paymentBelongsToDate(p,date));
     const cash=paymentsDay.filter(p=>p.method==="Efectivo").reduce((s,p)=>s+(+p.amount||0),0);
     const bank=paymentsDay.filter(p=>p.method==="Transferencia").reduce((s,p)=>s+(+p.amount||0),0);
     const total=paymentsDay.reduce((s,p)=>s+(+p.amount||0),0);
-    const tips=data.tips.filter(t=>t.date===date).reduce((s,t)=>s+(+t.amount||0),0);
+    const tips=data.tips.filter(t=>tipBelongsToDate(t,date)).reduce((s,t)=>s+(+t.amount||0),0);
     html+=`<h2>Reporte diario · ${date}</h2><table><tr><th>Resumen</th><th>Monto</th></tr><tr><td>Total cobrado</td><td class="num">$${moneyXls(total)}</td></tr><tr><td>Efectivo</td><td class="num">$${moneyXls(cash)}</td></tr><tr><td>Transferencias</td><td class="num">$${moneyXls(bank)}</td></tr><tr><td>Propinas</td><td class="num">$${moneyXls(tips)}</td></tr></table>`;
     html+=`<h2>Servicios del día</h2><table><tr><th>Hora</th><th>Cliente</th><th>Dirección</th><th>Servicio</th><th>Importe</th><th>Pagado</th><th>Pendiente</th><th>Forma de pago</th><th>Estado</th></tr>`;
     rowsDaily.forEach(a=>{
