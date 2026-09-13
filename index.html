@@ -97,11 +97,21 @@ materializeRecurring();
 // Primero se cargan los datos reales desde PostgreSQL.
 save();
 
+let saveQueue=Promise.resolve();
 function save(){
  localStorage.setItem(KEY,JSON.stringify(data));
  if(remoteReady){
-  fetch("/api/state",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)})
-   .catch(()=>console.warn("No se pudo sincronizar en este momento."));
+  const payload=JSON.stringify(data);
+  saveQueue=saveQueue.then(()=>fetch("/api/state",{
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:payload,
+    keepalive:true
+  })).then(r=>{
+    if(!r.ok)throw new Error("HTTP "+r.status);
+  }).catch(e=>{
+    console.warn("No se pudo sincronizar en este momento:",e);
+  });
  }
 }
 async function loadSharedData(){
@@ -295,9 +305,30 @@ function deleteCredit(id){
 
 function makeClientPdfText(clientId){
  const c=client(clientId); if(!c)return [];
- const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled");
- const debt=aa.reduce((s,a)=>s+apptDue(a.id),0);
- const lines=["AUTOLAVADO PITS","CUENTA POR COBRAR","",`Cliente: ${c.name}`,`Direccion: ${c.address||"-"}`,`Telefono: ${c.phone||"-"}`,"",`TOTAL PENDIENTE: ${money(debt)}`];
+ const aa=data.appointments
+   .filter(a=>a.clientId===clientId&&a.status!=="cancelled"&&apptDue(a.id)>0)
+   .sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+ const lines=[
+   "AUTOLAVADO PITS",
+   "CUENTA POR COBRAR",
+   "",
+   `Cliente: ${c.name}`,
+   `Direccion: ${c.address||"-"}`,
+   `Telefono: ${c.phone||"-"}`,
+   "",
+   `TOTAL PENDIENTE: ${money(aa.reduce((s,a)=>s+apptDue(a.id),0))}`,
+   "",
+   "DETALLE DE SERVICIOS PENDIENTES",
+   "Fecha | Vehiculo | Servicio | Importe | Pagos | Estado"
+ ];
+ aa.forEach(a=>{
+   const pays=data.payments.filter(p=>p.appointmentId===a.id);
+   const used=apptCreditApplied(a.id);
+   const paidParts=pays.map(p=>`${p.method} ${money(p.amount)}`);
+   if(used)paidParts.push(`Credito ${money(used)}`);
+   const paidText=paidParts.join(" + ")||"Sin pago";
+   lines.push(`${a.date} | ${(a.vehicleType||"Vehiculo")}${a.vehicleSize?" "+a.vehicleSize:""} | ${a.serviceName||"Servicio"} | ${money(a.total)} | ${paidText} | Debe ${money(apptDue(a.id))}`);
+ });
  return lines.map(s=>String(s).normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^\x20-\x7E]/g,""));
 }
 
@@ -320,17 +351,48 @@ function downloadClientPDF(clientId){
 }
 function printClientSummary(clientId){
  const c=client(clientId);if(!c)return;
- const aa=data.appointments.filter(a=>a.clientId===clientId&&a.status!=="cancelled");
+ const aa=data.appointments
+   .filter(a=>a.clientId===clientId&&a.status!=="cancelled"&&apptDue(a.id)>0)
+   .sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
  const debt=aa.reduce((s,a)=>s+apptDue(a.id),0);
  const w=window.open("","_blank");
  if(!w){alert("Permite ventanas emergentes para imprimir la cuenta.");return;}
+ const rows=aa.map(a=>{
+   const pays=data.payments.filter(p=>p.appointmentId===a.id);
+   const used=apptCreditApplied(a.id);
+   const paidParts=pays.map(p=>`${esc(p.method)} ${money(p.amount)}`);
+   if(used)paidParts.push(`Crédito ${money(used)}`);
+   return `<tr>
+     <td>${esc(a.date)}</td>
+     <td>${esc((a.vehicleType||"Vehículo")+(a.vehicleSize?" "+a.vehicleSize:""))}</td>
+     <td>${esc(a.serviceName||"Servicio")}</td>
+     <td>${money(a.total)}</td>
+     <td>${paidParts.join("<br>")||"Sin pago"}</td>
+     <td class="debt">Debe ${money(apptDue(a.id))}</td>
+   </tr>`;
+ }).join("");
  w.document.open();
  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Cuenta por cobrar - ${esc(c.name)}</title>
- <style>body{font-family:Arial,Helvetica,sans-serif;padding:32px;color:#20262b}h1{margin:0;color:#d71920;font-size:25px}h2{margin:6px 0 22px;font-size:18px}.meta{line-height:1.65;margin-bottom:25px}.box{border:1px solid #ddd;border-radius:10px;padding:22px;max-width:420px}.box span{font-size:13px;color:#666}.box b{display:block;font-size:32px;margin-top:8px}.debt{color:#d71920}@media print{body{padding:10px}}</style></head><body>
- <h1>Autolavado Pits</h1><h2>Cuenta por cobrar</h2>
+ <style>
+ body{font-family:Arial,Helvetica,sans-serif;padding:32px;color:#20262b}
+ h1{margin:0;color:#d71920;font-size:25px}
+ h2{margin:6px 0 22px;font-size:18px}
+ .meta{line-height:1.65;margin-bottom:22px}
+ .box{border:1px solid #ddd;border-radius:10px;padding:18px 20px;margin-bottom:24px}
+ .box span{font-size:13px;color:#666}
+ .box b{display:block;font-size:30px;margin-top:7px}
+ .debt{color:#d71920;font-weight:bold}
+ table{border-collapse:collapse;width:100%;font-size:12px}
+ th,td{border:1px solid #ccc;padding:8px;text-align:left;vertical-align:top}
+ th{font-weight:bold;background:#f2f2f2}
+ @media print{body{padding:10px}table{font-size:11px}}
+ </style></head><body>
+ <h1>Autolavado Pits</h1><h2>Resumen de cuenta del cliente</h2>
  <div class="meta"><b>Cliente:</b> ${esc(c.name)}<br><b>Dirección:</b> ${esc(c.address||"-")}<br><b>Teléfono:</b> ${esc(c.phone||"-")}</div>
  <div class="box"><span>Total pendiente</span><b class="debt">${money(debt)}</b></div>
- <p style="margin-top:25px;color:#666">Este ticket muestra únicamente el saldo pendiente actual del cliente.</p>
+ <h3>Detalle de servicios pendientes</h3>
+ <table><thead><tr><th>Fecha</th><th>Vehículo</th><th>Servicio</th><th>Importe</th><th>Pagos</th><th>Estado</th></tr></thead>
+ <tbody>${rows||`<tr><td colspan="6">No hay servicios pendientes.</td></tr>`}</tbody></table>
  <script>window.onload=function(){setTimeout(function(){window.print()},250)}<\/script></body></html>`);
  w.document.close();
 }
@@ -889,10 +951,24 @@ function updatePaymentTip(){
 function savePayment(){
  const a=appointment(document.getElementById("p_appt").value),amount=+document.getElementById("p_amount").value||0,method=document.getElementById("p_method").value;
  const paymentDate=document.getElementById("p_date")?.value||pagosDate;
- if(!a||!paymentDate||a.date!==paymentDate||amount<=0)return;
+ if(!a||!paymentDate){
+   alert("No se pudo identificar el servicio o la fecha del pago.");
+   return;
+ }
+ if(a.date!==paymentDate){
+   alert("La fecha del pago debe coincidir con la fecha del servicio.");
+   return;
+ }
+ if(amount<=0){
+   alert("Ingresa un monto mayor a $0.");
+   return;
+ }
  let remaining=amount;
  const dueBefore=apptDue(a.id);
- if(dueBefore<=0)return;
+ if(dueBefore<=0){
+   alert("Este servicio ya está pagado.");
+   return;
+ }
 
  // Si el cliente tiene saldo a favor, se usa primero para cubrir este servicio.
  const credit=clientCredit(a.clientId);
