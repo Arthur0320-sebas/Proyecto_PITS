@@ -110,9 +110,11 @@ const defaultData={
  ],
 };
 let remoteReady=false;
+let remoteSyncing=false;
 let storedData=null;
 let localDirty=false;
 const DIRTY_KEY=KEY+"_dirty";
+let sharedPollTimer=null;
 try{storedData=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){storedData=null}
 try{localDirty=localStorage.getItem(DIRTY_KEY)==="1"}catch(e){localDirty=false}
 let data=storedData || structuredClone(window.PITS_SEED_DATA || defaultData);
@@ -125,7 +127,6 @@ materializeRecurring();
 
 let saveQueue=Promise.resolve();
 let saveVersion=0;
-let lastRemoteVersion=0;
 
 function markLocalDirty(){
   localDirty=true;
@@ -143,6 +144,7 @@ function save(){
 }
 function syncRemote(version){
   const payload=JSON.stringify(data);
+  remoteSyncing=true;
   saveQueue=saveQueue.then(async()=>{
     const r=await fetch("/api/state",{
       method:"PUT",
@@ -154,42 +156,72 @@ function syncRemote(version){
     if(!r.ok || !result || result.ok!==true){
       throw new Error("No se pudo guardar en el servidor (HTTP "+r.status+")");
     }
-    lastRemoteVersion=version;
     if(version===saveVersion) clearLocalDirty();
   }).catch(e=>{
     console.warn("No se pudo sincronizar en este momento:",e);
+  }).finally(()=>{
+    remoteSyncing=false;
   });
+}
+function normalizeLoadedData(){
+  data.clients??=[]; data.employees??=[]; data.appointments??=[]; data.payments??=[]; data.expenses??=[]; data.employeePayments??=[]; data.tips??=[]; data.closings??=[]; data.cash??={efectivo:0,banco:0};
+  data.creditTransactions??=[]; data.recurring??=[]; data.clients.forEach(c=>{c.creditBalance=+(c.creditBalance||0)});
+  data.employees.length||(data.employees=structuredClone(defaultData.employees));
+  data.services=structuredClone(defaultData.services);
+  data.appointments.forEach(a=>{a.employeeIds??=[];a.status??="scheduled";a.paymentStatus??="pending";a.commissions??=[];a.courtesy??=false;});
+  materializeRecurring();
+}
+async function refreshSharedData(){
+  if(!remoteReady || localDirty || remoteSyncing)return;
+  try{
+    const r=await fetch("/api/state",{cache:"no-store"});
+    if(!r.ok)throw new Error("HTTP "+r.status);
+    const remote=await r.json();
+    if(!remote || remote.ok!==true || !remote.data || typeof remote.data!=="object")return;
+    const incoming=JSON.stringify(remote.data);
+    const current=JSON.stringify(data);
+    if(incoming!==current){
+      data=remote.data;
+      normalizeLoadedData();
+      localStorage.setItem(KEY,JSON.stringify(data));
+      clearLocalDirty();
+      render();
+    }
+  }catch(e){
+    console.warn("No se pudo actualizar desde PostgreSQL:",e);
+  }
+}
+function startSharedPolling(){
+  if(sharedPollTimer)return;
+  sharedPollTimer=setInterval(refreshSharedData,5000);
 }
 async function loadSharedData(){
   try{
-    const r=await fetch("/api/state");
+    const r=await fetch("/api/state",{cache:"no-store"});
     if(!r.ok) throw new Error("Servidor no disponible (HTTP "+r.status+")");
     const remote=await r.json();
     if(!remote || remote.ok!==true) throw new Error("Respuesta inválida del servidor");
 
+    remoteReady=true;
     if(remote.data && typeof remote.data==="object"){
       if(localDirty){
-        // Hay cambios locales pendientes: NO sobrescribirlos con datos viejos.
-        remoteReady=true;
         const version=++saveVersion;
         syncRemote(version);
       }else{
         data=remote.data;
+        normalizeLoadedData();
         localStorage.setItem(KEY,JSON.stringify(data));
         clearLocalDirty();
-        remoteReady=true;
       }
     }else{
-      // La base está vacía. Solo aquí se suben los datos locales existentes.
-      remoteReady=true;
       const version=++saveVersion;
       syncRemote(version);
     }
 
     render();
+    startSharedPolling();
   }catch(e){
     console.warn("No se pudo cargar PostgreSQL; se conservan los datos locales:",e);
-    // MUY IMPORTANTE: no activar sincronización remota si el GET falló.
     remoteReady=false;
     render();
   }
@@ -1009,8 +1041,6 @@ function openClient(id){
 function saveClient(id){
  const name=document.getElementById("c_name").value.trim(),address=document.getElementById("c_address").value.trim(),phone=document.getElementById("c_phone").value.trim();
  if(!name)return alert("Escribe el nombre del cliente.");
- const dup=data.clients.find(c=>c.name.trim().toLowerCase()===name.toLowerCase()&&c.id!==id);
- if(dup)return alert(`⚠️ Este cliente ya existe: ${dup.name}.\\nDirección: ${dup.address}`);
  const similar=data.clients.find(c=>{
    if(c.id===id)return false;
    const n=normalizeClientText(name), cn=normalizeClientText(c.name);
