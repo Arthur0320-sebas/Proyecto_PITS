@@ -110,13 +110,15 @@ const defaultData={
  ],
 };
 let remoteReady=false;
+let remoteLoading=true;
 let remoteSyncing=false;
 let storedData=null;
-let localDirty=false;
-const DIRTY_KEY=KEY+"_dirty";
+let localPending=false;
+let localChangedDuringLoad=false;
+let initialLocalSnapshot="";
 let sharedPollTimer=null;
+let retryTimer=null;
 try{storedData=JSON.parse(localStorage.getItem(KEY)||"null")}catch(e){storedData=null}
-try{localDirty=localStorage.getItem(DIRTY_KEY)==="1"}catch(e){localDirty=false}
 let data=storedData || structuredClone(window.PITS_SEED_DATA || defaultData);
 data.clients??=[]; data.employees??=[]; data.appointments??=[]; data.payments??=[]; data.expenses??=[]; data.employeePayments??=[]; data.tips??=[]; data.closings??=[]; data.cash??={efectivo:0,banco:0};
 data.creditTransactions??=[]; data.recurring??=[]; data.clients.forEach(c=>{c.creditBalance=+(c.creditBalance||0)});
@@ -124,25 +126,27 @@ data.employees.length||(data.employees=structuredClone(defaultData.employees));
 data.services=structuredClone(defaultData.services);
 data.appointments.forEach(a=>{a.employeeIds??=[];a.status??="scheduled";a.paymentStatus??="pending";a.commissions??=[];a.courtesy??=false;});
 materializeRecurring();
+initialLocalSnapshot=JSON.stringify(data);
 
 let saveQueue=Promise.resolve();
 let saveVersion=0;
 
-function markLocalDirty(){
-  localDirty=true;
-  try{localStorage.setItem(DIRTY_KEY,"1")}catch(e){}
-}
-function clearLocalDirty(){
-  localDirty=false;
-  try{localStorage.removeItem(DIRTY_KEY)}catch(e){}
+function scheduleRemoteRetry(){
+  if(retryTimer || !remoteReady || !localPending)return;
+  retryTimer=setTimeout(()=>{
+    retryTimer=null;
+    if(remoteReady && localPending && !remoteSyncing) syncRemote(++saveVersion);
+  },5000);
 }
 function save(){
   localStorage.setItem(KEY,JSON.stringify(data));
-  markLocalDirty();
+  if(remoteLoading) localChangedDuringLoad=true;
+  localPending=true;
   const version=++saveVersion;
   if(remoteReady) syncRemote(version);
 }
 function syncRemote(version){
+  if(!remoteReady)return;
   const payload=JSON.stringify(data);
   remoteSyncing=true;
   saveQueue=saveQueue.then(async()=>{
@@ -150,15 +154,16 @@ function syncRemote(version){
       method:"PUT",
       headers:{"Content-Type":"application/json"},
       body:payload,
-      keepalive:true
+      cache:"no-store"
     });
     const result=await r.json().catch(()=>null);
     if(!r.ok || !result || result.ok!==true){
-      throw new Error("No se pudo guardar en el servidor (HTTP "+r.status+")");
+      throw new Error((result&&result.error)||("HTTP "+r.status));
     }
-    if(version===saveVersion) clearLocalDirty();
+    if(version===saveVersion) localPending=false;
   }).catch(e=>{
     console.warn("No se pudo sincronizar en este momento:",e);
+    scheduleRemoteRetry();
   }).finally(()=>{
     remoteSyncing=false;
   });
@@ -172,7 +177,7 @@ function normalizeLoadedData(){
   materializeRecurring();
 }
 async function refreshSharedData(){
-  if(!remoteReady || localDirty || remoteSyncing)return;
+  if(!remoteReady || remoteSyncing || localPending)return;
   try{
     const r=await fetch("/api/state",{cache:"no-store"});
     if(!r.ok)throw new Error("HTTP "+r.status);
@@ -184,7 +189,6 @@ async function refreshSharedData(){
       data=remote.data;
       normalizeLoadedData();
       localStorage.setItem(KEY,JSON.stringify(data));
-      clearLocalDirty();
       render();
     }
   }catch(e){
@@ -193,36 +197,42 @@ async function refreshSharedData(){
 }
 function startSharedPolling(){
   if(sharedPollTimer)return;
-  sharedPollTimer=setInterval(refreshSharedData,5000);
+  sharedPollTimer=setInterval(()=>{
+    if(!remoteReady){loadSharedData();return;}
+    refreshSharedData();
+  },5000);
 }
 async function loadSharedData(){
   try{
     const r=await fetch("/api/state",{cache:"no-store"});
     if(!r.ok) throw new Error("Servidor no disponible (HTTP "+r.status+")");
     const remote=await r.json();
-    if(!remote || remote.ok!==true) throw new Error("Respuesta inválida del servidor");
+    if(!remote || remote.ok!==true) throw new Error((remote&&remote.error)||"Respuesta inválida del servidor");
 
     remoteReady=true;
-    if(remote.data && typeof remote.data==="object"){
-      if(localDirty){
+    if(remote.data && typeof remote.data==="object" && !Array.isArray(remote.data)){
+      if(localChangedDuringLoad || localPending){
         const version=++saveVersion;
         syncRemote(version);
       }else{
         data=remote.data;
         normalizeLoadedData();
         localStorage.setItem(KEY,JSON.stringify(data));
-        clearLocalDirty();
       }
     }else{
       const version=++saveVersion;
+      localPending=true;
       syncRemote(version);
     }
-
+    remoteLoading=false;
+    localChangedDuringLoad=false;
     render();
     startSharedPolling();
   }catch(e){
-    console.warn("No se pudo cargar PostgreSQL; se conservan los datos locales:",e);
+    console.warn("No se pudo cargar PostgreSQL; se conserva la copia local:",e);
     remoteReady=false;
+    remoteLoading=false;
+    startSharedPolling();
     render();
   }
 }
