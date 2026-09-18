@@ -168,6 +168,10 @@ function syncRemote(version){
     remoteSyncing=false;
   });
 }
+function getActiveView(){
+  const active=document.querySelector(".nav.active");
+  return active?.dataset.view || "dashboard";
+}
 function normalizeLoadedData(){
   data.clients??=[]; data.employees??=[]; data.appointments??=[]; data.payments??=[]; data.expenses??=[]; data.employeePayments??=[]; data.tips??=[]; data.closings??=[]; data.cash??={efectivo:0,banco:0};
   data.creditTransactions??=[]; data.recurring??=[]; data.clients.forEach(c=>{c.creditBalance=+(c.creditBalance||0)});
@@ -189,7 +193,7 @@ async function refreshSharedData(){
       data=remote.data;
       normalizeLoadedData();
       localStorage.setItem(KEY,JSON.stringify(data));
-      render();
+      render(getActiveView());
     }
   }catch(e){
     console.warn("No se pudo actualizar desde PostgreSQL:",e);
@@ -226,14 +230,14 @@ async function loadSharedData(){
     }
     remoteLoading=false;
     localChangedDuringLoad=false;
-    render();
+    render(getActiveView());
     startSharedPolling();
   }catch(e){
     console.warn("No se pudo cargar PostgreSQL; se conserva la copia local:",e);
     remoteReady=false;
     remoteLoading=false;
     startSharedPolling();
-    render();
+    render(getActiveView());
   }
 }
 
