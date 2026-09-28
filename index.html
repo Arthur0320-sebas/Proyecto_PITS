@@ -31,6 +31,65 @@
 .thanks{font-family:"Brush Script MT","Segoe Script",cursive;font-size:34px;line-height:1.05;color:#14213d;transform:rotate(-4deg);padding-left:8px}
 .ticket-watermark{width:280px;opacity:.10}
 @media(max-width:800px){.ticket-balances{grid-template-columns:1fr}.ticket-logo{width:230px;max-width:55%;height:120px}.ticket-date{font-size:12px}.ticket-table{font-size:11px}}
+
+/* PITS ADMIN — Agenda nueva: solo estilos de Agenda */
+.agenda-new{background:#fff;border:1px solid #e5e8ed;border-radius:10px;overflow:hidden}
+.agenda-new-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid #e9ecf0}
+.agenda-new-left{display:flex;align-items:center;gap:7px;min-width:0}
+.agenda-new-left .mini{height:32px}
+.agenda-date-label{display:flex;align-items:center;gap:8px;margin-left:4px;font-size:13px;font-weight:700;color:#26334b;white-space:nowrap}
+.agenda-date-icon{width:16px;height:16px;display:inline-flex;color:#26334b}
+.agenda-view-switch{display:flex;align-items:center;background:#f4f5f7;border-radius:7px;padding:2px;gap:2px}
+.agenda-view-btn{border:0;background:transparent;color:#536079;font-size:11px;font-weight:700;padding:7px 12px;border-radius:5px;cursor:pointer}
+.agenda-view-btn.active{background:#fff;color:#e51f2a;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.agenda-new-layout{display:grid;grid-template-columns:minmax(0,1fr) 238px;min-height:650px}
+.agenda-new-main{min-width:0;overflow:auto}
+.agenda-new-grid{display:grid;grid-template-columns:58px minmax(650px,1fr);position:relative}
+.agenda-times{position:relative;border-right:1px solid #edf0f3;background:#fff}
+.agenda-time-label{position:absolute;right:8px;transform:translateY(-50%);font-size:10px;color:#667187;white-space:nowrap}
+.agenda-canvas{position:relative;height:1326px;background:#fff}
+.agenda-grid-line{position:absolute;left:0;right:0;border-top:1px solid #eef0f3}
+.agenda-drop-line{position:absolute;left:0;right:0;height:1px;background:#e51f2a;opacity:0;pointer-events:none;z-index:20}
+.agenda-drop-line.show{opacity:.35}
+.agenda-new-event{position:absolute;border-radius:7px;padding:8px 10px;border:1px solid;box-shadow:0 1px 2px rgba(20,30,50,.04);cursor:grab;user-select:none;overflow:hidden;z-index:5}
+.agenda-new-event:active{cursor:grabbing}
+.agenda-new-event.dragging{opacity:.55;box-shadow:0 8px 18px rgba(20,30,50,.15)}
+.agenda-new-event.event-scheduled{background:#fff8e8;border-color:#f0c36b}
+.agenda-new-event.event-paid{background:#f0fbf4;border-color:#69c98c}
+.agenda-new-event.event-transfer{background:#eef5ff;border-color:#78aef5}
+.agenda-new-event.event-working{background:#fff1f1;border-color:#ef8c8c}
+.agenda-new-event b{display:block;font-size:12px;color:#26324a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agenda-new-event span{display:block;font-size:10px;color:#536079;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agenda-new-event small{display:block;font-size:10px;color:#4f5b70;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agenda-new-event em{display:inline-block;font-size:9px;font-style:normal;font-weight:800;color:#d87800;margin-top:4px}
+.agenda-vehicle-icon{width:25px;height:25px;display:flex;align-items:center;justify-content:center;float:left;margin-right:7px;margin-top:-1px;color:#1e5f93}
+.agenda-vehicle-icon svg{width:23px;height:23px;display:block}
+.agenda-new-event .event-content{min-width:0;overflow:hidden}
+.agenda-new-side{border-left:1px solid #e9ecf0;background:#fff;padding:12px}
+.agenda-side-new{width:100%;height:40px;border:0;border-radius:7px;background:#e51f2a;color:#fff;font-size:13px;font-weight:800;cursor:pointer;margin-bottom:12px}
+.agenda-side-new:hover{background:#cc1822}
+.agenda-month-head{display:flex;align-items:center;justify-content:space-between;padding:5px 2px 10px;font-size:12px;font-weight:800;color:#26324a}
+.agenda-month-arrow{border:0;background:transparent;color:#26324a;font-size:17px;cursor:pointer;padding:2px 6px}
+.agenda-mini-cal{width:100%;border-collapse:collapse;text-align:center;font-size:10px}
+.agenda-mini-cal th{color:#7a8494;font-weight:700;padding:5px 0}
+.agenda-mini-cal td{height:29px;color:#3e495e;cursor:pointer;border-radius:50%}
+.agenda-mini-cal td:hover{background:#f0f2f5}
+.agenda-mini-cal td.today{font-weight:800;border:1px solid #e51f2a}
+.agenda-mini-cal td.selected{background:#e51f2a;color:#fff;font-weight:800}
+.agenda-mini-cal td.muted{color:#c3c8d0}
+.agenda-side-note{margin-top:10px;padding:9px 10px;background:#f7f9fb;border:1px solid #e7ebef;border-radius:7px;font-size:10px;line-height:1.45;color:#697487;text-align:center}
+@media(max-width:900px){
+  .agenda-new-layout{grid-template-columns:1fr}
+  .agenda-new-side{border-left:0;border-top:1px solid #e9ecf0}
+  .agenda-new-main{overflow-x:auto}
+}
+@media(max-width:650px){
+  .agenda-new-head{align-items:flex-start;flex-wrap:wrap}
+  .agenda-view-switch{width:100%}
+  .agenda-view-btn{flex:1}
+  .agenda-date-label{font-size:11px}
+}
+
 </style>
 </head>
 <body>
@@ -855,40 +914,215 @@ function materializeRecurring(){
  const rules=data.recurring||[], horizon=new Date(); horizon.setDate(horizon.getDate()+180);
  rules.forEach(r=>{let d=new Date((r.start||TODAY())+"T12:00:00");while(d<=horizon){if(r.days.includes(d.getDay())){const ds=d.toISOString().slice(0,10);if(!data.appointments.some(a=>a.recurringId===r.id&&a.date===ds))data.appointments.push({id:uid(),recurringId:r.id,clientId:r.clientId,date:ds,time:r.time,vehicleType:"",vehicleSize:"",serviceId:"",serviceName:"",total:0,courtesy:false,status:"scheduled",paymentStatus:"pending",employeeIds:[],commissions:[],endTime:""});}d.setDate(d.getDate()+1)}});
 }
+
+function agendaVehicleIcon(vehicleType){
+  const v=String(vehicleType||"").toLowerCase();
+  if(v==="moto"){
+    return `<svg viewBox="0 0 64 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="15" cy="30" r="7"></circle><circle cx="49" cy="30" r="7"></circle>
+      <path d="M22 30h10l6-13h8l5 13M32 30l-7-11h8l5 6M45 17l4-5"></path>
+    </svg>`;
+  }
+  if(v==="camioneta"){
+    return `<svg viewBox="0 0 64 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M7 28V16h32l8 8h10v9H7z"></path><path d="M39 16v8h8"></path>
+      <circle cx="18" cy="33" r="5"></circle><circle cx="50" cy="33" r="5"></circle>
+    </svg>`;
+  }
+  return `<svg viewBox="0 0 64 40" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 29v-9l6-9h29l9 9h6v9H7z"></path>
+    <path d="M18 11l-3 9h35l-7-9"></path>
+    <circle cx="18" cy="31" r="5"></circle><circle cx="48" cy="31" r="5"></circle>
+  </svg>`;
+}
+function agendaFormatTime(minutes){
+  minutes=Math.max(0,Math.min(1439,Math.round(minutes/15)*15));
+  const h=Math.floor(minutes/60),m=minutes%60;
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0");
+}
+function agendaMinutes(t){
+  if(!t)return null;
+  const [h,m]=String(t).split(":").map(Number);
+  return Number.isFinite(h)&&Number.isFinite(m)?h*60+m:null;
+}
+let agendaDragId=null;
+let agendaSuppressClick=false;
+function agendaDragStart(ev,id){
+  agendaDragId=id;
+  agendaSuppressClick=true;
+  ev.dataTransfer.effectAllowed="move";
+  ev.dataTransfer.setData("text/plain",id);
+  ev.currentTarget.classList.add("dragging");
+}
+function agendaDragEnd(ev){
+  ev.currentTarget.classList.remove("dragging");
+  document.getElementById("agendaDropLine")?.classList.remove("show");
+  setTimeout(()=>agendaSuppressClick=false,0);
+}
+function agendaEventClick(ev,id){
+  if(agendaSuppressClick){ev.preventDefault();return;}
+  openAppointment(id);
+}
+function agendaDragOver(ev){
+  if(!agendaDragId)return;
+  ev.preventDefault();
+  const canvas=document.getElementById("agendaCanvas");
+  if(!canvas)return;
+  const rect=canvas.getBoundingClientRect();
+  const y=Math.max(0,Math.min(rect.height,ev.clientY-rect.top));
+  const line=document.getElementById("agendaDropLine");
+  if(line)line.style.top=y+"px",line.classList.add("show");
+}
+function agendaDrop(ev){
+  if(!agendaDragId)return;
+  ev.preventDefault();
+  const id=ev.dataTransfer.getData("text/plain")||agendaDragId;
+  const a=appointment(id);
+  const canvas=document.getElementById("agendaCanvas");
+  if(!a||!canvas){agendaDragId=null;return;}
+  const rect=canvas.getBoundingClientRect();
+  const y=Math.max(0,Math.min(rect.height,ev.clientY-rect.top));
+  const startHour=6,pxHour=78;
+  let newMinutes=startHour*60+(y/pxHour)*60;
+  newMinutes=Math.max(startHour*60,Math.min(22*60+45,newMinutes));
+  const nextTime=agendaFormatTime(newMinutes);
+  const oldStart=agendaMinutes(a.time);
+  if(oldStart===null){agendaDragId=null;return;}
+  const delta=agendaMinutes(nextTime)-oldStart;
+  if(delta!==0){
+    a.time=nextTime;
+    if(a.endTime){
+      const oldEnd=agendaMinutes(a.endTime);
+      if(oldEnd!==null)a.endTime=agendaFormatTime(oldEnd+delta);
+    }
+    save();
+    render("agenda");
+  }
+  agendaDragId=null;
+}
+function agendaMiniCalendar(date){
+  const d=new Date(date+"T12:00:00");
+  const year=d.getFullYear(),month=d.getMonth();
+  const first=new Date(year,month,1),last=new Date(year,month+1,0);
+  const prevLast=new Date(year,month,0).getDate();
+  const offset=first.getDay();
+  const cells=[];
+  for(let i=0;i<42;i++){
+    const dayNum=i-offset+1;
+    let n=dayNum,y=year,m=month,muted=false;
+    if(dayNum<1){n=prevLast+dayNum;m=month-1;muted=true}
+    else if(dayNum>last.getDate()){n=dayNum-last.getDate();m=month+1;muted=true}
+    const ds=new Date(y,m,n,12).toISOString().slice(0,10);
+    const cls=[muted?"muted":"",ds===date?"selected":"",ds===TODAY()?"today":""].filter(Boolean).join(" ");
+    cells.push(`<td class="${cls}" onclick="agendaSetDate('${ds}')">${n}</td>`);
+  }
+  const rows=[];
+  for(let i=0;i<42;i+=7)rows.push(`<tr>${cells.slice(i,i+7).join("")}</tr>`);
+  const label=d.toLocaleDateString("es-MX",{month:"long",year:"numeric"});
+  return `<div class="agenda-month-head">
+    <button class="agenda-month-arrow" onclick="agendaMiniMove(-1)">‹</button>
+    <span>${label.charAt(0).toUpperCase()+label.slice(1)}</span>
+    <button class="agenda-month-arrow" onclick="agendaMiniMove(1)">›</button>
+  </div>
+  <table class="agenda-mini-cal"><thead><tr><th>D</th><th>L</th><th>M</th><th>M</th><th>J</th><th>V</th><th>S</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
+}
+function agendaMiniMove(delta){
+  const d=new Date(agendaDate+"T12:00:00");
+  d.setMonth(d.getMonth()+delta,1);
+  agendaDate=d.toISOString().slice(0,10);
+  render("agenda");
+}
+
 function agenda(){
  const selected=agendaDate;
  const arr=data.appointments.filter(a=>a.date===selected&&a.status!=="cancelled").sort((a,b)=>(a.time||"").localeCompare(b.time||""));
  const startHour=6,endHour=23,pxHour=78;
  const lanes=[];
  const positioned=arr.map(a=>{
-   const [hh,mm]=(a.time||"08:00").split(":").map(Number);
-   const start=(hh*60+mm)-(startHour*60);
+   const startMin=agendaMinutes(a.time)??(startHour*60);
+   const start=Math.max(0,startMin-startHour*60);
    let duration=60;
-   if(a.time&&a.endTime){const [eh,em]=a.endTime.split(":").map(Number);const endMinutes=eh*60+em;const startMinutes=hh*60+mm;if(endMinutes>startMinutes)duration=endMinutes-startMinutes;}
+   if(a.time&&a.endTime){
+     const endMin=agendaMinutes(a.endTime);
+     if(endMin!==null&&endMin>startMin)duration=endMin-startMin;
+   }
    const end=start+duration;
-   let lane=0; while(lanes[lane]!==undefined&&lanes[lane]>start)lane++; lanes[lane]=end;
-   return {...a,top:Math.max(0,start/60*pxHour),height:Math.max(58,duration/60*pxHour-6),lane};
+   let lane=0;
+   while(lanes[lane]!==undefined&&lanes[lane]>start)lane++;
+   lanes[lane]=end;
+   return {...a,top:(start/60)*pxHour,height:Math.max(58,(duration/60)*pxHour-6),lane};
  });
  const laneCount=Math.max(1,lanes.length);
- const hours=Array.from({length:endHour-startHour+1},(_,i)=>`<div class="agenda-hour" style="top:${i*pxHour}px">${String(startHour+i).padStart(2,"0")}:00</div>`).join("");
- const lines=Array.from({length:endHour-startHour+1},(_,i)=>`<div class="agenda-line" style="top:${i*pxHour}px"></div>`).join("");
+ const hours=Array.from({length:endHour-startHour+1},(_,i)=>{
+   const top=i*pxHour;
+   return `<span class="agenda-time-label" style="top:${top}px">${String(startHour+i).padStart(2,"0")}:00</span>`;
+ }).join("");
+ const lines=Array.from({length:endHour-startHour+1},(_,i)=>`<div class="agenda-grid-line" style="top:${i*pxHour}px"></div>`).join("");
  const events=positioned.map(a=>{
-   const c=client(a.clientId),left=`calc(${a.lane} * (100% / ${laneCount}) + 6px)`,width=`calc(100% / ${laneCount} - 12px)`,due=apptDue(a.id);
+   const c=client(a.clientId);
+   const left=`calc(${a.lane} * (100% / ${laneCount}) + 6px)`;
+   const width=`calc(100% / ${laneCount} - 12px)`;
+   const due=apptDue(a.id);
+   const paid=isPaid(a.id);
+   const cls=a.status==="in_progress"?"event-working":paid?"event-paid":"event-scheduled";
    const workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ");
-   return `<div class="agenda-event ${a.status==="in_progress"?"event-working":a.status==="completed"?"event-done":""}" style="top:${a.top}px;height:${a.height}px;left:${left};width:${width}" onclick="openAppointment('${a.id}')">
-     <b>${esc(c?.name||"Cliente")}</b><span>${esc(c?.address||"")}</span>
-     <small>${esc(a.time||"")}${a.endTime?` — ${esc(a.endTime)}`:""}${a.time?" · ":""}${esc(a.serviceName||"Servicio por definir")}${workers?` · 👷 ${esc(workers)}`:""}</small>
-     ${due>0?`<em>Pendiente ${money(due)}</em>`:""}
+   return `<div class="agenda-new-event ${cls}" draggable="true"
+      style="top:${a.top}px;height:${a.height}px;left:${left};width:${width}"
+      ondragstart="agendaDragStart(event,'${a.id}')"
+      ondragend="agendaDragEnd(event)"
+      onclick="agendaEventClick(event,'${a.id}')">
+      <div class="agenda-vehicle-icon">${agendaVehicleIcon(a.vehicleType)}</div>
+      <div class="event-content">
+        <b>${esc(c?.name||"Cliente")}</b>
+        <span>${esc(a.vehicleType||"Vehículo por confirmar")}${a.vehicleSize?` · ${esc(a.vehicleSize)}`:""}</span>
+        <small>${esc(a.serviceName||"Servicio por definir")}${workers?` · ${esc(workers)}`:""}</small>
+        ${due>0?`<em>Pendiente ${money(due)}</em>`:""}
+      </div>
    </div>`;
  }).join("");
  const pretty=new Date(selected+"T12:00:00").toLocaleDateString("es-MX",{weekday:"long",day:"2-digit",month:"long",year:"numeric"});
- return `<div class="toolbar"><div><b>Agenda</b><span class="muted">${pretty}</span></div><div><button class="mini" onclick="openRecurring()">↻ Programar cliente</button> <button class="btn red" onclick="newAppointment('', '${selected}')">+ Nueva cita</button></div></div>
- <div class="agenda-controls"><button class="mini" onclick="agendaMove(-1)">← Día anterior</button><button class="mini" onclick="agendaToday()">Hoy</button><input type="date" value="${selected}" onchange="agendaSetDate(this.value)"><button class="mini" onclick="agendaMove(1)">Día siguiente →</button></div>
- <div class="agenda-calendar"><div class="agenda-time">${hours}</div><div class="agenda-body">${lines}${events||`<div class="agenda-empty">No hay citas para este día.</div>`}</div></div>`;
+ return `<div class="agenda-new">
+   <div class="agenda-new-head">
+     <div class="agenda-new-left">
+       <button class="mini" onclick="agendaMove(-1)" title="Día anterior">‹</button>
+       <button class="mini" onclick="agendaMove(1)" title="Día siguiente">›</button>
+       <button class="mini" onclick="agendaToday()">Hoy</button>
+       <div class="agenda-date-label">
+         <span class="agenda-date-icon">▣</span>
+         <span>${pretty}</span>
+       </div>
+     </div>
+     <div class="agenda-view-switch">
+       <button class="agenda-view-btn active" type="button">Día</button>
+       <button class="agenda-view-btn" type="button">Semana</button>
+       <button class="agenda-view-btn" type="button">Mes</button>
+     </div>
+   </div>
+
+   <div class="agenda-new-layout">
+     <div class="agenda-new-main">
+       <div class="agenda-new-grid">
+         <div class="agenda-times">${hours}</div>
+         <div class="agenda-canvas" id="agendaCanvas" ondragover="agendaDragOver(event)" ondrop="agendaDrop(event)">
+           ${lines}
+           <div id="agendaDropLine" class="agenda-drop-line"></div>
+           ${events||`<div class="agenda-empty">No hay citas para este día.</div>`}
+         </div>
+       </div>
+     </div>
+
+     <aside class="agenda-new-side">
+       <button class="agenda-side-new" onclick="newAppointment('', '${selected}')">+ Nueva cita</button>
+       ${agendaMiniCalendar(selected)}
+       <div class="agenda-side-note">Arrastra una cita para cambiar su horario.</div>
+     </aside>
+   </div>
+ </div>`;
 }
 function agendaMove(days){const d=new Date(agendaDate+"T12:00:00");d.setDate(d.getDate()+days);agendaDate=d.toISOString().slice(0,10);render("agenda")}
 function agendaToday(){agendaDate=TODAY();render("agenda")}
 function agendaSetDate(v){if(!v)return;agendaDate=v;render("agenda")}
+
 function appointmentRow(a){
  const c=client(a.clientId),workers=(a.employeeIds||[]).map(id=>employee(id)?.name).filter(Boolean).join(" + ")||"Sin asignar";
  const due=apptDue(a.id);
@@ -1355,4 +1589,3 @@ const oldRender=render;
 render=function(view="dashboard"){oldRender(view);if(view==="clientes")setTimeout(renderClientList,0)};
 </script>
 </body>
-</html>
