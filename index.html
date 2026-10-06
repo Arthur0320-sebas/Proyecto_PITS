@@ -1557,14 +1557,17 @@ function reportMonthLabel(ym){
  return new Intl.DateTimeFormat('es-MX',{month:'long',year:'numeric'}).format(new Date(y,m-1,1));
 }
 function changeReportMonth(delta){
+ reportTab='monthly';
  const [y,m]=reportMonth.split('-').map(Number);
  const d=new Date(y,m-1+delta,1);
  reportMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-render('reportes');
+ render('reportes');
 }
+
 function resetReportMonth(){
+ reportTab='monthly';
  reportMonth=TODAY().slice(0,7);
-render('reportes');
+ render('reportes');
 }
 function reportMonthData(month){
  const rows=data.appointments.filter(a=>a.date?.startsWith(month)&&a.status!=="cancelled");
