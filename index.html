@@ -1550,6 +1550,8 @@ function caja(){
  <div class="closing-tools"><button class="mini" onclick="downloadClosingReport('daily')">⬇ Descargar corte del día</button><button class="mini" onclick="printClosingReport('daily')">🖨 Imprimir corte del día</button><button class="mini" onclick="downloadClosingReport('monthly')">⬇ Descargar corte del mes</button><button class="mini" onclick="printClosingReport('monthly')">🖨 Imprimir corte del mes</button></div>`;
 }
 let reportMonth=TODAY().slice(0,7);
+let reportTab='daily';
+
 function reportMonthLabel(ym){
  const [y,m]=ym.split('-').map(Number);
  return new Intl.DateTimeFormat('es-MX',{month:'long',year:'numeric'}).format(new Date(y,m-1,1));
@@ -1558,13 +1560,11 @@ function changeReportMonth(delta){
  const [y,m]=reportMonth.split('-').map(Number);
  const d=new Date(y,m-1+delta,1);
  reportMonth=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
- render('reportes');
- setTimeout(()=>toggleReport(false),0);
+render('reportes');
 }
 function resetReportMonth(){
  reportMonth=TODAY().slice(0,7);
- render('reportes');
- setTimeout(()=>toggleReport(false),0);
+render('reportes');
 }
 function reportMonthData(month){
  const rows=data.appointments.filter(a=>a.date?.startsWith(month)&&a.status!=="cancelled");
@@ -1602,7 +1602,14 @@ function reportes(){
    <div class="table-wrap"><table><thead><tr><th>Servicio</th><th>Importe</th><th>Transferencia</th><th>Efectivo</th><th>Cuentas por pagar</th></tr></thead><tbody>${Object.entries(groups).map(([k,r])=>`<tr><td>${esc(k)}</td><td>${money(r.importe)}</td><td>${money(r.transfer)}</td><td>${money(r.cash)}</td><td class="${r.pending?'danger':''}">${money(r.pending)}</td></tr>`).join("")||`<tr><td colspan="5" class="empty">No hay servicios en ${reportMonthLabel(month)}.</td></tr>`}</tbody></table></div>
  </div>`;
 }
-function toggleReport(daily){document.getElementById("dailyReport").classList.toggle("hidden",!daily);document.getElementById("monthlyReport").classList.toggle("hidden",daily);document.querySelectorAll(".report-tab").forEach((b,i)=>b.classList.toggle("active",daily?i===0:i===1))}
+function toggleReport(daily){
+ reportTab=daily?'daily':'monthly';
+ document.getElementById("dailyReport").classList.toggle("hidden",!daily);
+ document.getElementById("monthlyReport").classList.toggle("hidden",daily);
+ document.querySelectorAll(".report-tab").forEach((b,i)=>
+   b.classList.toggle("active",daily?i===0:i===1)
+ );
+}
 
 function downloadReport(type){
   const month=reportMonth, date=TODAY();
